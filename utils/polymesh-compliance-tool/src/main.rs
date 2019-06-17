@@ -1,4 +1,6 @@
 #[macro_use]
+extern crate failure;
+#[macro_use]
 extern crate log;
 
 mod promptable;
@@ -32,6 +34,7 @@ fn main() -> Result<(), Error> {
                     Arg::with_name("ENDPOINT")
                         .help("The endpoint call name")
                         .required(true)
+                        .possible_values(&["issue_token, transfer"])
                         .index(0),
                 )
                 .arg(
@@ -43,7 +46,24 @@ fn main() -> Result<(), Error> {
         )
         .get_matches();
 
-    match matches.value_of()
+    match matches.subcommand_matches("gen") {
+        Some(matches) => handle_gen(matches)?,
+        None => unreachable!(),
+    }
+
+    Ok(())
+}
+
+fn handle_gen(matches: &ArgMatches) -> Result<(), Error> {
+
+    match matches
+        .value_of("ENDPOINT")
+        .ok_or(format_err!("ENDPOINT not matched"))?
+    {
+        "issue_token" => debug!("Processing issue_token()"),
+        "transfer" => debug!("Processing transfer()"),
+        _other => unreachable!(),
+    }
 
     Ok(())
 }
