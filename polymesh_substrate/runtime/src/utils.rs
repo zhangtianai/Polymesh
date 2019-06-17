@@ -20,17 +20,13 @@ pub trait Trait: system::Trait + balances::Trait {
     fn as_tb(v: u128) -> Self::TokenBalance;
 }
 
-decl_storage! {
-    trait Store for Module<T: Trait> as Utils {
-
-    }
-}
-
 decl_module! {
     /// The module declaration.
     pub struct Module<T: Trait> for enum Call where origin: T::Origin {
 
-        fn verify_signed_checksum(checksum: Vec<u8>, signature: Vec<u8>, generator_point: Vec<u8>) -> Result {
+        fn deposit_event<T>() = default;
+
+        pub fn verify_signed_checksum(checksum: Vec<u8>, signature: Vec<u8>, generator_point: Vec<u8>) -> Result {
 
             Ok(())
         }
