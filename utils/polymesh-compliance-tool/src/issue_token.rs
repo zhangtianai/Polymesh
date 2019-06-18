@@ -6,9 +6,9 @@ use crate::promptable::Promptable;
 
 #[derive(Clone, Debug, Default)]
 pub struct IssueToken {
-    name: String,
-    ticker: String,
-    total_supply: String,
+    pub name: String,
+    pub ticker: String,
+    pub total_supply: String,
 }
 
 impl Promptable for IssueToken {

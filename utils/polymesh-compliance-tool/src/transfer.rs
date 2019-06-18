@@ -6,10 +6,10 @@ use crate::promptable::Promptable;
 
 #[derive(Clone, Debug, Default)]
 pub struct Transfer {
-    ticker: String,
-    from: String,
-    to: String,
-    amount: String,
+    pub ticker: String,
+    pub from: String,
+    pub to: String,
+    pub amount: String,
 }
 
 impl Promptable for Transfer {
