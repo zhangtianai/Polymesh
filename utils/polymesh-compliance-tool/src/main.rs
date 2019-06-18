@@ -5,6 +5,7 @@ extern crate log;
 
 mod issue_token;
 mod promptable;
+mod transfer;
 
 use clap::{App, Arg, ArgMatches, SubCommand};
 use failure::Error;
@@ -17,6 +18,7 @@ use std::{
 
 use issue_token::*;
 use promptable::*;
+use transfer::*;
 
 fn main() -> Result<(), Error> {
     // Init logging
@@ -31,6 +33,7 @@ fn main() -> Result<(), Error> {
 
     let matches = App::new("The Polymesh Compliance Token Tool")
         .author("Polymath Network")
+        .about("A tool for manually preparing compliance tokens for Polymesh API calls")
         .version(env!("CARGO_PKG_VERSION"))
         .subcommand(
             SubCommand::with_name("gen")
@@ -44,7 +47,7 @@ fn main() -> Result<(), Error> {
                 )
                 .arg(
                     Arg::with_name("key")
-                        .help("The signing key to use for creating the compliance token")
+                        .help("The signing key (hex form) to use for creating the compliance token")
                         .short("k")
                         .long("key"),
                 ),
@@ -69,7 +72,7 @@ fn handle_gen(matches: &ArgMatches) -> Result<(), Error> {
             debug!("Processing issue_token()");
             handle_issue_token()?;
         }
-        "transfer" => debug!("Processing transfer()"),
+        "transfer" => {debug!("Processing transfer()"); handle_transfer()?;},
         _other => unreachable!(),
     }
 
@@ -78,11 +81,22 @@ fn handle_gen(matches: &ArgMatches) -> Result<(), Error> {
 
 /// `gen issue_token`
 fn handle_issue_token() -> Result<(), Error> {
-    let mut stdin = io::stdin();
+    let stdin = io::stdin();
     let mut stdout = io::stdout();
     let prompted = IssueToken::prompt(&mut BufReader::new(stdin), &mut stdout)?;
 
     debug!("Read IssueToken: {:?}", prompted);
+
+    Ok(())
+}
+
+/// `gen transfer`
+fn handle_transfer() -> Result<(), Error> {
+    let stdin = io::stdin();
+    let mut stdout = io::stdout();
+    let prompted = Transfer::prompt(&mut BufReader::new(stdin), &mut stdout)?;
+
+    debug!("Read Transfer: {:?}", prompted);
 
     Ok(())
 }

@@ -38,7 +38,7 @@ impl Promptable for IssueToken {
 
         let total_supply = buf.trim().to_owned();
 
-        // Store the string form, but make sure it is a valid number
+        // Store the string form for easier hashing, but make sure it is a valid number
         let _parsed: u128 = total_supply.parse()?;
 
         Ok(Box::new(Self {
