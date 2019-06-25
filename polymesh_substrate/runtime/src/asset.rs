@@ -5,6 +5,7 @@ use crate::percentage_tm;
 use crate::utils;
 use rstd::prelude::*;
 //use parity_codec::Codec;
+use runtime_io::{keccak_256, secp256k1_ecdsa_recover};
 use runtime_primitives::traits::{As, CheckedAdd, CheckedSub, Convert};
 use session;
 use support::traits::{Currency, ExistenceRequirement, WithdrawReason};
@@ -132,6 +133,25 @@ decl_module! {
             Self::_transfer(ticker.clone(), sender, to, value)
         }
 
+        pub fn transfer_with_compliance(_origin, _ticker: Vec<u8>, to: T::AccountId, value: T::TokenBalance, compliance_token: Vec<u8>) -> Result {
+            let ticker = utils::bytes_to_upper(_ticker.as_slice());
+            let sender = ensure_signed(_origin)?;
+
+            let ticker_hash = keccak_256(&ticker);
+            let mut token_array: [u8; 65] = [0u8; 65];
+
+            // Convert the comp token into an array
+            token_array.copy_from_slice(compliance_token.as_slice());
+
+            let _ = secp256k1_ecdsa_recover(&token_array, &ticker_hash).map_err(|_e| {
+                "Failed to verify compliance token"
+            });
+
+            Self::_is_valid_transfer(ticker.clone(), sender.clone(), to.clone(), value)?;
+
+            Self::_transfer(ticker.clone(), sender, to, value)
+        }
+
         // transfer tokens from one account to another
         // origin is assumed as sender
         fn force_transfer(_origin, _ticker: Vec<u8>, from: T::AccountId, to: T::AccountId, value: T::TokenBalance) -> Result {
@@ -219,7 +239,7 @@ decl_module! {
             ensure!(
                 Self::check_granularity(_ticker.clone(), value),
                 "Invalid granularity"
-            );
+                );
             ensure!(<BalanceOf<T>>::exists((ticker.clone(), sender.clone())), "Account does not own this token");
             let burner_balance = Self::balance_of((ticker.clone(), sender.clone()));
             ensure!(burner_balance >= value, "Not enough balance.");
