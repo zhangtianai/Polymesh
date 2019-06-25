@@ -306,7 +306,6 @@ impl asset::Trait for Runtime {
 }
 
 impl utils::Trait for Runtime {
-    type Event = Event;
     type TokenBalance = u128;
     fn as_u128(v: Self::TokenBalance) -> u128 {
         v
