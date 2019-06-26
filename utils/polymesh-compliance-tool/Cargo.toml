@@ -5,9 +5,10 @@ authors = ["Stan Drozd <drozdziak1@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-ursa = "0.1"
 clap = "2.33.0"
 failure = "0.1.5"
 log = "0.4.6"
 env_logger = "0.6.1"
 hex = "0.3.2"
+secp256k1 = "0.13.0"
+rand = "0.6.5"

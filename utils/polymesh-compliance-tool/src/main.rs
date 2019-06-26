@@ -10,10 +10,7 @@ mod transfer;
 use clap::{App, Arg, ArgMatches, SubCommand};
 use failure::Error;
 use log::LevelFilter;
-use ursa::{
-    bls::{Bls, SignKey},
-    hash::sha3::{Digest, Keccak256},
-};
+use secp256k1::{Message, Secp256k1, SecretKey, constants::SECRET_KEY_SIZE};
 
 use std::{
     env,
@@ -69,7 +66,9 @@ fn main() -> Result<(), Error> {
 /// Takes care of the `gen` subcommand
 fn handle_gen(matches: &ArgMatches) -> Result<(), Error> {
     // TODO: Alternatively read and parse a key if supplied on the CLI
-    let key = SignKey::new(None)?;
+    let secp = Secp256k1::new();
+    let secret_key_arr: [u8; SECRET_KEY_SIZE] = rand::random();
+    let key = SecretKey::from_slice(&secret_key_arr)?;
 
     match matches
         .value_of("ENDPOINT")
@@ -90,35 +89,37 @@ fn handle_gen(matches: &ArgMatches) -> Result<(), Error> {
 }
 
 /// `gen issue_token`
-fn handle_issue_token(signing_key: &SignKey) -> Result<(), Error> {
-    let stdin = io::stdin();
-    let mut stdout = io::stdout();
-    let prompted = IssueToken::prompt(&mut BufReader::new(stdin), &mut stdout)?;
-
-    debug!("Read IssueToken: {:?}", prompted);
-
-    // Create a hash to sign
-    let mut hasher = Keccak256::new();
-
-    hasher.input(prompted.name.as_str());
-    hasher.input(prompted.ticker.as_str());
-    hasher.input(prompted.total_supply.as_str());
-
-    let hash = hasher.result();
-    debug!("Computed hash: {}", hex::encode(hash));
-
-    // Sign the computed hash
-    let signature = Bls::sign(hash.as_slice(), signing_key)?;
-
-    println!("Key: {}", hex::encode(signing_key.as_bytes()));
-    println!("Hash: {}", hex::encode(hash));
-    println!("Token: {}", hex::encode(signature.as_bytes()));
+fn handle_issue_token(secret_key: &SecretKey) -> Result<(), Error> {
+/*
+ *    let stdin = io::stdin();
+ *    let mut stdout = io::stdout();
+ *    let prompted = IssueToken::prompt(&mut BufReader::new(stdin), &mut stdout)?;
+ *
+ *    debug!("Read IssueToken: {:?}", prompted);
+ *
+ *    // Create a hash to sign
+ *    let mut hasher = Keccak256::new();
+ *
+ *    hasher.input(prompted.name.as_str());
+ *    hasher.input(prompted.ticker.as_str());
+ *    hasher.input(prompted.total_supply.as_str());
+ *
+ *    let hash = hasher.result();
+ *    debug!("Computed hash: {}", hex::encode(hash));
+ *
+ *    // Sign the computed hash
+ *    let signature = Bls::sign(hash.as_slice(), signing_key)?;
+ *
+ *    println!("Key: {}", hex::encode(signing_key.as_bytes()));
+ *    println!("Hash: {}", hex::encode(hash));
+ *    println!("Token: {}", hex::encode(signature.as_bytes()));
+ */
 
     Ok(())
 }
 
 /// `gen transfer`
-fn handle_transfer(signing_key: &SignKey) -> Result<(), Error> {
+fn handle_transfer(secret_key: &SecretKey) -> Result<(), Error> {
     let stdin = io::stdin();
     let mut stdout = io::stdout();
     let prompted = Transfer::prompt(&mut BufReader::new(stdin), &mut stdout)?;
@@ -126,22 +127,22 @@ fn handle_transfer(signing_key: &SignKey) -> Result<(), Error> {
     debug!("Read Transfer: {:?}", prompted);
 
     // Create a hash to sign
-    let mut hasher = Keccak256::new();
+    //let mut hasher = Keccak256::new();
 
-    hasher.input(prompted.ticker.as_str());
-    hasher.input(prompted.from.as_str());
-    hasher.input(prompted.to.as_str());
-    hasher.input(prompted.amount.as_str());
+    //hasher.input(prompted.ticker.as_str());
+    // TODO: implement a multiple hash scheme for transfer()
+    //hasher.input(prompted.from.as_str());
+    //hasher.input(prompted.to.as_str());
+    //hasher.input(prompted.amount.as_str());
 
-    let hash = hasher.result();
-    debug!("Computed hash: {}", hex::encode(hash));
+    //let hash = hasher.result();
+    //debug!("Computed hash: {}", hex::encode(hash));
 
     // Sign the computed hash
-    let signature = Bls::sign(hash.as_slice(), signing_key)?;
 
-    println!("Key: {}", hex::encode(signing_key.as_bytes()));
-    println!("Hash: {}", hex::encode(hash));
-    println!("Token: {}", hex::encode(signature.as_bytes()));
+    //println!("Key: {}", hex::encode(signing_key.as_bytes()));
+    //println!("Hash: {}", hex::encode(hash));
+    //println!("Token: {}", hex::encode(signature.as_bytes()));
 
     Ok(())
 }
