@@ -103,7 +103,8 @@
       },
       "asset": {
         "feeCollector": "5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy",
-        "assetCreationFee": 250
+        "assetCreationFee": 250,
+        "complianceAuthorityPubkey": "0464d17c52ac3794cf31c00122a7787807a9cc23d960aa34be89802a2b1cd090ab77f193b6535a2c6e88e81701baccaadb0454dae84458c039bcb4b63c1bc03af2"
       },
       "identity": {
         "owner": "5DAAnrj7VHTznn2AWBemMuyBwZWs6FNFjdyVXUeYum3PTXFy"

@@ -5,7 +5,7 @@ use crate::percentage_tm;
 use crate::utils;
 use rstd::prelude::*;
 //use parity_codec::Codec;
-use runtime_io::{keccak_256, secp256k1_ecdsa_recover};
+use runtime_io::keccak_256;
 use runtime_primitives::traits::{As, CheckedAdd, CheckedSub, Convert};
 use session;
 use support::traits::{Currency, ExistenceRequirement, WithdrawReason};
@@ -63,6 +63,7 @@ decl_storage! {
         CheckpointBalance get(balance_at_checkpoint): map (Vec<u8>, T::AccountId, u32) => Option<T::TokenBalance>;
         // Last checkpoint updated for user balance
         LatestUserCheckpoint get(latest_user_checkpoint): map (Vec<u8>, T::AccountId) => u32;
+        pub ComplianceAuthorityPubkey get(compliance_authority_pubkey) config(): Vec<u8>;
     }
 }
 
@@ -136,16 +137,11 @@ decl_module! {
         pub fn transfer_with_compliance(_origin, _ticker: Vec<u8>, to: T::AccountId, value: T::TokenBalance, compliance_token: Vec<u8>) -> Result {
             let ticker = utils::bytes_to_upper(_ticker.as_slice());
             let sender = ensure_signed(_origin)?;
+            let pubkey = hex::decode(Self::compliance_authority_pubkey()).map_err(|_| "Could not hex-decode compliance authority pubkey")?;
 
             let ticker_hash = keccak_256(&ticker);
-            let mut token_array: [u8; 65] = [0u8; 65];
 
-            // Convert the comp token into an array
-            token_array.copy_from_slice(compliance_token.as_slice());
-
-            let _ = secp256k1_ecdsa_recover(&token_array, &ticker_hash).map_err(|_e| {
-                "Failed to verify compliance token"
-            });
+            <utils::Module<T>>::verify_compliance_token(compliance_token, ticker_hash.to_vec(), pubkey)?;
 
             Self::_is_valid_transfer(ticker.clone(), sender.clone(), to.clone(), value)?;
 
@@ -702,6 +698,25 @@ mod tests {
         t.into()
     }
 
+    fn asset_comp_pubkey_is(pubkey: &str) -> runtime_io::TestExternalities<Blake2Hasher> {
+        let mut t = system::GenesisConfig::<Test>::default()
+            .build_storage()
+            .unwrap()
+            .0;
+
+        t.extend(
+            crate::asset::GenesisConfig::<Test> {
+                compliance_authority_pubkey: pubkey.as_bytes().to_vec(),
+                ..Default::default()
+            }
+            .build_storage()
+            .unwrap()
+            .0,
+        );
+
+        t.into()
+    }
+
     #[test]
     fn issuers_can_create_tokens() {
         with_externalities(&mut identity_owned_by_1(), || {
@@ -1126,5 +1141,27 @@ mod tests {
                 }
             });
         }
+    }
+
+    #[test]
+    /// Dummy test for checking transfer_with_compliance()
+    pub fn test_compliance_verifies_signatures() {
+        let pubkey_string = "0464d17c52ac3794cf31c00122a7787807a9cc23d960aa34be89802a2b1cd090ab77f193b6535a2c6e88e81701baccaadb0454dae84458c039bcb4b63c1bc03af2";
+        let comp_token_string = "f99014d4ec3c08335891f07e1e91a853ead55bca28a4d634456a854dca1e77f8042220c982b0c7ece2e7b5eb0ef666f47c24bc6bc20c659c5400e5c36d6400d1";
+        let pubkey = hex::decode(pubkey_string).expect("Could not decode hex");
+        let comp_token = hex::decode(comp_token_string).expect("Could not decode hex");
+        let ticker = "a".to_owned().into_bytes();
+
+        with_externalities(&mut asset_comp_pubkey_is(pubkey_string), || {
+            println!("Creation fee is {}", Asset::asset_creation_fee());
+
+            assert_ok!(Asset::transfer_with_compliance(
+                Origin::signed(0),
+                ticker,
+                1,
+                2,
+                comp_token,
+            ))
+        })
     }
 }

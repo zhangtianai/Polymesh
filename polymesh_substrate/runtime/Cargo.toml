@@ -9,6 +9,9 @@ lazy_static = "1.3"
 yaml-rust = "0.4"
 chrono = "0.4.6"
 
+[dependencies]
+hex = "0.3.2"
+
 [dependencies.aura]
 default_features = false
 git = 'https://github.com/paritytech/substrate.git'
