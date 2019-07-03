@@ -3,8 +3,8 @@ use crate::general_tm;
 use crate::identity;
 use crate::percentage_tm;
 use crate::utils;
+use parity_codec::Encode;
 use rstd::prelude::*;
-//use parity_codec::Codec;
 use runtime_io::keccak_256;
 use runtime_primitives::traits::{As, CheckedAdd, CheckedSub, Convert};
 use session;
@@ -137,14 +137,19 @@ decl_module! {
         pub fn transfer_with_compliance(_origin, _ticker: Vec<u8>, to: T::AccountId, value: T::TokenBalance, compliance_token: Vec<u8>) -> Result {
             let ticker = utils::bytes_to_upper(_ticker.as_slice());
             let sender = ensure_signed(_origin)?;
-            let pubkey = hex::decode(Self::compliance_authority_pubkey()).map_err(|_| "Could not hex-decode compliance authority pubkey")?;
+            let pubkey = utils::decode_hex_bytes(Self::compliance_authority_pubkey().as_slice())?;
 
-            let ticker_hash = keccak_256(&ticker);
+            // Create a byte vector for keccak hashing for compliance token verification
+            let mut data_buffer = ticker.clone();
+            data_buffer.append(&mut sender.encode());
+            data_buffer.append(&mut to.encode());
+            data_buffer.append(&mut value.encode());
 
-            <utils::Module<T>>::verify_compliance_token(compliance_token, ticker_hash.to_vec(), pubkey)?;
+            let data_hash = keccak_256(&data_buffer);
+
+            utils::verify_compliance_token(compliance_token, data_hash.to_vec(), pubkey)?;
 
             Self::_is_valid_transfer(ticker.clone(), sender.clone(), to.clone(), value)?;
-
             Self::_transfer(ticker.clone(), sender, to, value)
         }
 
@@ -1148,15 +1153,20 @@ mod tests {
     pub fn test_compliance_verifies_signatures() {
         let pubkey_string = "0464d17c52ac3794cf31c00122a7787807a9cc23d960aa34be89802a2b1cd090ab77f193b6535a2c6e88e81701baccaadb0454dae84458c039bcb4b63c1bc03af2";
         let comp_token_string = "f99014d4ec3c08335891f07e1e91a853ead55bca28a4d634456a854dca1e77f8042220c982b0c7ece2e7b5eb0ef666f47c24bc6bc20c659c5400e5c36d6400d1";
-        let pubkey = hex::decode(pubkey_string).expect("Could not decode hex");
-        let comp_token = hex::decode(comp_token_string).expect("Could not decode hex");
+        let pubkey =
+            utils::decode_hex_bytes(pubkey_string.as_bytes()).expect("Could not decode hex");
+        let comp_token =
+            utils::decode_hex_bytes(comp_token_string.as_bytes()).expect("Could not decode hex");
         let ticker = "a".to_owned().into_bytes();
+
+        println!("pubkey is {:X?}", pubkey);
+        println!("comp_token is {:X?}", comp_token);
 
         with_externalities(&mut asset_comp_pubkey_is(pubkey_string), || {
             println!("Creation fee is {}", Asset::asset_creation_fee());
 
             assert_ok!(Asset::transfer_with_compliance(
-                Origin::signed(0),
+                Origin::signed(266),
                 ticker,
                 1,
                 2,
