@@ -9,7 +9,7 @@ pub struct Transfer {
     pub ticker: String,
     pub from: String,
     pub to: String,
-    pub amount: String,
+    pub amount: u128,
 }
 
 impl Promptable for Transfer {
@@ -45,10 +45,7 @@ impl Promptable for Transfer {
         buf = String::new();
         stdin.read_line(&mut buf)?;
 
-        let amount = buf.trim().to_owned();
-
-        // Store the string form for easier hashing, but make sure it is a valid number
-        let _parsed: u128 = amount.parse()?;
+        let amount = buf.trim().to_owned().parse()?;
 
         Ok(Box::new(Self {
             ticker,

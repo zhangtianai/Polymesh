@@ -12,6 +12,8 @@ use failure::Error;
 use log::LevelFilter;
 use secp256k1::{constants::SECRET_KEY_SIZE, All, Message, PublicKey, Secp256k1, SecretKey};
 use sha3::{Digest, Keccak256};
+use parity_codec::Encode;
+use substrate_primitives::crypto::Ss58Codec;
 
 use std::{
     env,
@@ -141,10 +143,9 @@ fn handle_transfer(secret_key: &SecretKey) -> Result<(), Error> {
     let mut hasher = Keccak256::new();
 
     hasher.input(prompted.ticker.as_str());
-    // TODO: implement a multiple hash scheme for transfer() on-chain
-    //hasher.input(prompted.from.as_str());
-    //hasher.input(prompted.to.as_str());
-    //hasher.input(prompted.amount.as_str());
+    hasher.input(prompted.from.as_str());
+    hasher.input(prompted.to.as_str());
+    hasher.input(prompted.amount.encode());
 
     let hash = hasher.result();
     debug!("Computed hash: {}", hex::encode(&hash));
