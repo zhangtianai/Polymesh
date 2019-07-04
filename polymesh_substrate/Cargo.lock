@@ -1929,7 +1929,6 @@ dependencies = [
 name = "node-template-runtime"
 version = "1.0.0"
 dependencies = [
- "hex 0.3.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "parity-codec 3.5.1 (registry+https://github.com/rust-lang/crates.io-index)",
  "safe-mix 1.0.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "serde 1.0.91 (registry+https://github.com/rust-lang/crates.io-index)",

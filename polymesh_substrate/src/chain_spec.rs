@@ -190,7 +190,7 @@ pub fn testnet_genesis(
         asset: Some(AssetConfig {
             asset_creation_fee: 250,
             fee_collector: get_account_id_from_seed("Dave"),
-            compliance_authority_pubkey: "9262bbdc13d773ba563d3e38e02588a7bc7f0b70271baf04eeb11e3b1f244890",
+            compliance_authority_pubkey: "9262bbdc13d773ba563d3e38e02588a7bc7f0b70271baf04eeb11e3b1f244890".as_bytes().to_vec(),
         }),
         identity: Some(IdentityConfig {
             owner: get_account_id_from_seed("Dave"),
