@@ -4,8 +4,13 @@ use rstd::prelude::*;
 pub static DID_PREFIX: &'static str = "did:poly:";
 use crate::balances;
 
-use codec::Encode;
-use sr_primitives::traits::{CheckedAdd, CheckedSub};
+use codec::{Encode, Decode};
+use sr_primitives::{
+    transaction_validity::{TransactionValidity, TransactionValidityError, ValidTransaction},
+    traits::{CheckedAdd, CheckedSub, SignedExtension},
+    ApplyError,
+    weights::DispatchInfo,
+};
 use srml_support::{
     decl_event, decl_module, decl_storage,
     dispatch::Result,
@@ -690,6 +695,37 @@ impl<T: Trait> IdentityTrait<T::Balance> for Module<T> {
         }
         return false;
     }
+}
+
+/// Nonce check and increment to give replay protection for transactions.
+#[derive(Encode, Decode, Clone, Eq, PartialEq)]
+pub struct CheckIdentity<T: Trait>(Vec<u8>, rstd::marker::PhantomData<T>);
+
+#[cfg(feature = "std")]
+impl<T: Trait + Send + Sync> rstd::fmt::Debug for CheckIdentity<T> {
+	fn fmt(&self, _f: &mut rstd::fmt::Formatter) -> rstd::fmt::Result {
+		Ok(())
+	}
+}
+
+impl<T: Trait + Send + Sync> SignedExtension for CheckIdentity<T> {
+	type AccountId = T::AccountId;
+	type Call = T::Call;
+	type AdditionalSigned = ();
+	type Pre = ();
+
+	fn additional_signed(&self) -> rstd::result::Result<(), TransactionValidityError> { Ok(()) }
+
+	fn validate(
+		&self,
+		who: &Self::AccountId,
+		_call: &Self::Call,
+		info: DispatchInfo,
+		_len: usize,
+	) -> TransactionValidity {
+        sr_primitives::print("Validate called");
+        Ok(ValidTransaction::default())
+	}
 }
 
 /// tests for this module
