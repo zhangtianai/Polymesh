@@ -22,8 +22,8 @@ pub type ChainSpec = substrate_service::ChainSpec<GenesisConfig>;
 pub enum Alternative {
     /// Whatever the current runtime is, with just Alice as an auth.
     Development,
-    /// Whatever the current runtime is, with simple Alice/Bob auths.
-    LocalTestnet,
+    /// Polymesh
+    Polymesh,
     /// The stats collector testnet
     StatsTestnet,
 }
@@ -74,16 +74,15 @@ impl Alternative {
                 None,
                 None,
             ),
-            Alternative::LocalTestnet => ChainSpec::from_genesis(
-                "Local Testnet",
-                "local_testnet",
+            Alternative::Polymesh => ChainSpec::from_genesis(
+                "Polymesh",
+                "polymesh",
                 || {
                     testnet_genesis(
                         vec![
                             get_authority_keys_from_seed("Alice"),
                             get_authority_keys_from_seed("Bob"),
                             get_authority_keys_from_seed("Charlie"),
-                            get_authority_keys_from_seed("Dave"),
                         ],
                         get_from_seed::<AccountId>("Alice"),
                         vec![
@@ -148,8 +147,8 @@ impl Alternative {
 
     pub(crate) fn from(s: &str) -> Option<Self> {
         match s {
-            "dev" => Some(Alternative::Development),
-            "" | "local" => Some(Alternative::LocalTestnet),
+            "" | "dev" => Some(Alternative::Development),
+            "polymesh" => Some(Alternative::Polymesh),
             "stats-testnet" => Some(Alternative::StatsTestnet),
             _ => None,
         }
