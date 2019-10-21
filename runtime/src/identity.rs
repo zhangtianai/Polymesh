@@ -33,7 +33,26 @@ pub struct Investor {
 pub struct DidRecord<U> {
     pub master_key: Vec<u8>,
     pub signing_keys: Vec<Vec<u8>>,
+    pub signing_keys_new: Vec<SigningKey>,
     pub balance: U,
+}
+
+#[derive(codec::Encode, codec::Decode, Clone, PartialEq, Debug)]
+pub enum SigningType {
+    External,
+    Identity,
+    Multisig,
+    Relayer
+}
+
+#[derive(codec::Encode, codec::Decode, Default, Clone, PartialEq, Debug)]
+pub struct SigningKey {
+    pub key_data: Vec<u8>,
+    pub key_type: SigningType
+}
+
+impl Default for SigningType {
+    fn default() -> Self { SigningType::External }
 }
 
 #[derive(codec::Encode, codec::Decode, Default, Clone, PartialEq, Eq, Debug)]
@@ -55,9 +74,30 @@ pub struct ClaimRecord<U> {
 
 /// The module's configuration trait.
 pub trait Trait: system::Trait + balances::Trait + timestamp::Trait {
+    /// The outer origin type.
+	type Origin: From<RawOrigin<Self::AccountId, I>>;
+
+	/// The outer call dispatch type - used where signing key is identity
+	type Proposal: Parameter + Dispatchable<Origin=<Self as Trait<I>>::Origin>;
+
     /// The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 }
+
+/// Origin provided by the identity module.
+#[derive(PartialEq, Eq, Clone)]
+#[cfg_attr(feature = "std", derive(Debug))]
+pub enum RawOrigin<AccountId, I> {
+	/// Has KYC check
+	KYC(Vec<u8>),
+	/// Has KYB check
+	KYB(Vec<u8>),
+	/// Dummy to manage the fact we have instancing.
+	_Phantom(rstd::marker::PhantomData<I>),
+}
+
+/// Origin for the collective module.
+pub type Origin<T, I=DefaultInstance> = RawOrigin<<T as system::Trait>::AccountId, I>;
 
 decl_storage! {
     trait Store for Module<T: Trait> as identity {
@@ -79,6 +119,9 @@ decl_storage! {
 
         // Signing key => DID
         pub SigningKeyDid get(signing_key_did): map Vec<u8> => Vec<u8>;
+
+        // Signing key => DID
+        pub SigningKeyDidNew get(signing_key_did_new): map SigningKey => Vec<u8>;
 
         // Signing key => Charge Fee to did?. Default is false i.e. the fee will be charged from user balance
         pub ChargeDid get(charge_did): map Vec<u8> => bool;
@@ -163,6 +206,48 @@ decl_module! {
             <DidRecords<T>>::insert(&did, record);
 
             Self::deposit_event(RawEvent::NewDid(did, sender, signing_keys));
+
+            Ok(())
+        }
+
+// #[derive(codec::Encode, codec::Decode, Default, Clone, PartialEq, Debug)]
+// pub enum SigningType {
+//     External,
+//     Identity,
+//     Multisig,
+//     Relayer
+// }
+
+// #[derive(codec::Encode, codec::Decode, Default, Clone, PartialEq, Debug)]
+// pub struct SigningKey {
+//     pub key_data: Vec<u8>,
+//     pub key_type: SigningType
+// }
+
+        fn add_signing_key_new(origin, did: Vec<u8>, signing_key_type: SigningType, signing_key_data: Vec<u8>) -> Result {
+            let sender = ensure_signed(origin)?;
+
+            ensure!(<DidRecords<T>>::exists(&did), "DID must already exist");
+
+            // Verify that sender key is current master key
+            let sender_key = sender.encode();
+            let record = <DidRecords<T>>::get(&did);
+            ensure!(sender_key == record.master_key, "Sender must hold the master key");
+
+            let new_signing_key = SigningKey{key_data: signing_key_data, key_type: signing_key_type.clone()};
+
+            if signing_key_type == SigningType::External {
+                ensure!(!<SigningKeyDidNew>::exists(&new_signing_key), "Signing key already assigned");
+            }
+
+            <SigningKeyDidNew>::insert(&new_signing_key, did.clone());
+
+            <DidRecords<T>>::mutate(&did,
+            |record| {
+                record.signing_keys_new.push(new_signing_key.clone());
+            });
+
+            // Self::deposit_event(RawEvent::SigningKeyAddedNew(did, new_signing_key));
 
             Ok(())
         }
@@ -291,7 +376,7 @@ decl_module! {
         }
 
         /// Withdraws funds from a DID. Only called by master key owner.
-        fn withdrawy_poly(origin, did: Vec<u8>, amount: <T as balances::Trait>::Balance) -> Result {
+        fn withdraw_poly(origin, did: Vec<u8>, amount: <T as balances::Trait>::Balance) -> Result {
             let sender = ensure_signed(origin)?;
 
             // Verify that sender key is current master key
@@ -523,6 +608,9 @@ decl_event!(
         /// DID, new keys
         SigningKeysAdded(Vec<u8>, Vec<Vec<u8>>),
 
+        /// DID, new keys
+        // SigningKeyAddedNew(Vec<u8>, SigningKey),
+
         /// DID, the keys that got removed
         SigningKeysRemoved(Vec<u8>, Vec<Vec<u8>>),
 
@@ -686,6 +774,57 @@ impl<T: Trait> IdentityTrait<T::Balance> for Module<T> {
         }
         return false;
     }
+}
+
+/// Ensure that the origin `o` has a valid KYC attestation. Returns `Ok` or an `Err`
+/// otherwise.
+// pub fn ensure_kyc<OuterOrigin, AccountId, I>(o: OuterOrigin)
+// 	-> result::Result<Vec<u8>, &'static str>
+// where
+// 	OuterOrigin: Into<result::Result<RawOrigin<AccountId, I>, OuterOrigin>>
+// {
+// 	match o.into() {
+// 		Ok(RawOrigin::KYC(x)) => Ok(x),
+// 		_ => Err("bad origin: no kyc"),
+// 	}
+// }
+
+pub struct EnsureKyc<AccountId, I=DefaultInstance>(rstd::marker::PhantomData<(AccountId, I)>);
+
+impl<
+	O: Into<Result<RawOrigin<AccountId, I>, O>> + From<RawOrigin<AccountId, I>>,
+	AccountId,
+	I,
+> EnsureOrigin<O> for EnsureKyc<AccountId, I> {
+
+	type Success = AccountId;
+
+	fn try_origin(o: O) -> Result<Self::Success, O> {
+		o.into().and_then(|o| match o {
+			RawOrigin::KYC(did) => Ok(did),
+			r => Err(O::from(r)),
+		})
+	}
+
+}
+
+pub struct EnsureKyb<AccountId, I=DefaultInstance>(rstd::marker::PhantomData<(AccountId, I)>);
+
+impl<
+	O: Into<Result<RawOrigin<AccountId, I>, O>> + From<RawOrigin<AccountId, I>>,
+	AccountId,
+	I,
+> EnsureOrigin<O> for EnsureKyb<AccountId, I> {
+
+	type Success = AccountId;
+
+	fn try_origin(o: O) -> Result<Self::Success, O> {
+		o.into().and_then(|o| match o {
+			RawOrigin::KYB(did) => Ok(did),
+			r => Err(O::from(r)),
+		})
+	}
+
 }
 
 /// tests for this module
