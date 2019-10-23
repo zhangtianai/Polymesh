@@ -79,5 +79,13 @@
     "RegistryEntry": {
         "token_type": "u32",
         "owner_did": "Vec<u8>"
+    },
+    "SigningType": {
+        "_enum": {
+            "External": null,
+            "Identity": null,
+            "Multisig": null,
+            "Relayer": null
+        }
     }
 }

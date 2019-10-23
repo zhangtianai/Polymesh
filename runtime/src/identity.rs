@@ -74,30 +74,9 @@ pub struct ClaimRecord<U> {
 
 /// The module's configuration trait.
 pub trait Trait: system::Trait + balances::Trait + timestamp::Trait {
-    /// The outer origin type.
-	type Origin: From<RawOrigin<Self::AccountId, I>>;
-
-	/// The outer call dispatch type - used where signing key is identity
-	type Proposal: Parameter + Dispatchable<Origin=<Self as Trait<I>>::Origin>;
-
     /// The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as system::Trait>::Event>;
 }
-
-/// Origin provided by the identity module.
-#[derive(PartialEq, Eq, Clone)]
-#[cfg_attr(feature = "std", derive(Debug))]
-pub enum RawOrigin<AccountId, I> {
-	/// Has KYC check
-	KYC(Vec<u8>),
-	/// Has KYB check
-	KYB(Vec<u8>),
-	/// Dummy to manage the fact we have instancing.
-	_Phantom(rstd::marker::PhantomData<I>),
-}
-
-/// Origin for the collective module.
-pub type Origin<T, I=DefaultInstance> = RawOrigin<<T as system::Trait>::AccountId, I>;
 
 decl_storage! {
     trait Store for Module<T: Trait> as identity {
@@ -712,7 +691,7 @@ impl<T: Trait> Module<T> {
         <ClaimIssuers>::get(did).contains(issuer_did)
     }
 
-    pub fn is_signing_key(did: &Vec<u8>, key: &Vec<u8>) -> bool {
+    pub fn is_signing_key(did: &Vec<u8>, key: &Vec<u8>, key_type: &SigningKey) -> bool {        
         let record = <DidRecords<T>>::get(did);
         record.signing_keys.contains(key) || Self::is_master_key(did, key)
     }
@@ -774,57 +753,6 @@ impl<T: Trait> IdentityTrait<T::Balance> for Module<T> {
         }
         return false;
     }
-}
-
-/// Ensure that the origin `o` has a valid KYC attestation. Returns `Ok` or an `Err`
-/// otherwise.
-// pub fn ensure_kyc<OuterOrigin, AccountId, I>(o: OuterOrigin)
-// 	-> result::Result<Vec<u8>, &'static str>
-// where
-// 	OuterOrigin: Into<result::Result<RawOrigin<AccountId, I>, OuterOrigin>>
-// {
-// 	match o.into() {
-// 		Ok(RawOrigin::KYC(x)) => Ok(x),
-// 		_ => Err("bad origin: no kyc"),
-// 	}
-// }
-
-pub struct EnsureKyc<AccountId, I=DefaultInstance>(rstd::marker::PhantomData<(AccountId, I)>);
-
-impl<
-	O: Into<Result<RawOrigin<AccountId, I>, O>> + From<RawOrigin<AccountId, I>>,
-	AccountId,
-	I,
-> EnsureOrigin<O> for EnsureKyc<AccountId, I> {
-
-	type Success = AccountId;
-
-	fn try_origin(o: O) -> Result<Self::Success, O> {
-		o.into().and_then(|o| match o {
-			RawOrigin::KYC(did) => Ok(did),
-			r => Err(O::from(r)),
-		})
-	}
-
-}
-
-pub struct EnsureKyb<AccountId, I=DefaultInstance>(rstd::marker::PhantomData<(AccountId, I)>);
-
-impl<
-	O: Into<Result<RawOrigin<AccountId, I>, O>> + From<RawOrigin<AccountId, I>>,
-	AccountId,
-	I,
-> EnsureOrigin<O> for EnsureKyb<AccountId, I> {
-
-	type Success = AccountId;
-
-	fn try_origin(o: O) -> Result<Self::Success, O> {
-		o.into().and_then(|o| match o {
-			RawOrigin::KYB(did) => Ok(did),
-			r => Err(O::from(r)),
-		})
-	}
-
 }
 
 /// tests for this module
