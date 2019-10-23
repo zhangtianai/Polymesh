@@ -67,6 +67,7 @@ mod registry;
 mod simple_token;
 mod sto_capped;
 mod utils;
+mod permissioned_validators;
 
 // Make the WASM binary available.
 #[cfg(feature = "std")]
@@ -504,6 +505,9 @@ impl sto_capped::Trait for Runtime {
     type SimpleTokenTrait = SimpleToken;
 }
 
+impl permissioned_validators::Trait for Runtime {
+}
+
 impl percentage_tm::Trait for Runtime {
     type Event = Event;
 }
@@ -574,6 +578,7 @@ construct_runtime!(
         Identity: identity::{Module, Call, Storage, Event<T>, Config<T>},
         GeneralTM: general_tm::{Module, Call, Storage, Event<T>},
         STOCapped: sto_capped::{Module, Call, Storage, Event<T>},
+        PermissionedValidators: permissioned_validators::{Module, Call, Storage},
         PercentageTM: percentage_tm::{Module, Call, Storage, Event<T>},
         Exemption: exemption::{Module, Call, Storage, Event},
 		SimpleToken: simple_token::{Module, Call, Storage, Event<T>, Config<T>},
