@@ -16,17 +16,20 @@ use srml_support::{
     decl_event, decl_module, decl_storage, Parameter,
     dispatch::Result,
     ensure,
-    traits::{Currency, ExistenceRequirement, WithdrawReason},
+    traits::{Currency, ExistenceRequirement, WithdrawReason}, IsSubType,
 };
+//use srml_support::{traits::{OnFreeBalanceZero, OnUnbalanced, Currency, Get, Time}, IsSubType};
+
 use system::{self, ensure_signed};
 
 
 pub trait Trait: system::Trait + identity::Trait + staking::Trait {
+	// type Call: Parameter + Dispatchable<Origin=<Self as system::Trait>::Origin> + IsSubType<Module<Self>, Self>;
 }
 
 decl_storage! {
     trait Store for Module<T: Trait> as PermissionedValidators {
-		/// The current set of permissioned validators, stored as an ordered Vec.
+		/// The current set of permissioned validators, stored as an ordered Vec.	
 		Members get(members): Vec<T::AccountId>;
 	}
 }
@@ -80,7 +83,12 @@ impl<T: Trait + Send + Sync> SignedExtension for PermissionedValidator<T> {
 		_: DispatchInfo,
 		_: usize,
 	) -> TransactionValidity {
-
-        return Ok(ValidTransaction::default());		
+		match call {
+			Call::Staking(_) =>
+				//Check whether who is a permissioned validator
+				InvalidTransaction::ExhaustsResources.into(),
+			_ => Ok(ValidTransaction::default()),
+		}
+        // return Ok(ValidTransaction::default());		
 	}
 }

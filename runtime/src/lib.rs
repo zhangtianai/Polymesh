@@ -506,6 +506,7 @@ impl sto_capped::Trait for Runtime {
 }
 
 impl permissioned_validators::Trait for Runtime {
+    // type Call = Call;
 }
 
 impl percentage_tm::Trait for Runtime {
