@@ -66,6 +66,12 @@ const cli_opts = [
     alias: "f",
     type: Boolean,
     defaultValue: false
+  },
+  {
+    name: "tps", // Substrate storage dir
+    alias: "x",
+    type: Boolean,
+    defaultValue: false
   }
 ];
 
@@ -77,31 +83,23 @@ async function main() {
   let n_claims = opts.claims;
   let prepend = opts.prepend;
   let fast = opts.fast;
+  let tps_only = opts.tps;
 
   STORAGE_DIR = opts.dir;
-
-  console.log(
-    `Welcome to Polymesh Stats Collector. Creating ${n_accounts} accounts and DIDs, with ${n_claims} claims per DID.`
-  );
 
   const filePath = path.join(
     __dirname + "/../../../Polymesh/polymesh_schema.json"
   );
   const customTypes = JSON.parse(fs.readFileSync(filePath, "utf8"));
 
-  // const ws_provider = new WsProvider("ws://78.47.58.121:9944/");
-  const ws_provider = new WsProvider("ws://127.0.0.1:9944/");
+  //const ws_provider = new WsProvider("ws://78.47.58.121:9944/");
+  const ws_provider = new WsProvider("wss://pmd.polymath.network/");
+  //const ws_provider = new WsProvider("ws://127.0.0.1:9944/");
   const api = await ApiPromise.create({
     types: customTypes,
     provider: ws_provider
   });
   const keyring = new Keyring({ type: "sr25519" });
-
-  const initial_storage_size = duDirSize(STORAGE_DIR);
-  console.log(
-    `Initial storage size (${STORAGE_DIR}): ${initial_storage_size / 1024}MB`
-  );
-  current_storage_size = initial_storage_size;
 
   alice = keyring.addFromUri("//Alice", { name: "Alice" });
   let aliceRawNonce = await api.query.system.accountNonce(alice.address);
@@ -113,144 +111,218 @@ async function main() {
   let bob_nonce = new BN(bobRawNonce.toString());
   nonces.set(bob.address, bob_nonce);
 
-  dave = keyring.addFromUri("//Dave", { name: "Dave" });
-  let daveRawNonce = await api.query.system.accountNonce(dave.address);
-  let dave_nonce = new BN(daveRawNonce.toString());
-  nonces.set(dave.address, dave_nonce);
-
-  // Create `n_accounts` master key accounts
-
-  console.log("Generating Master Keys");
-  for (let i = 0; i < n_accounts; i++) {
-    master_keys.push(
-      keyring.addFromUri("//IssuerMK" + prepend + i.toString(), { name: i.toString() })
+  if (tps_only) {
+    console.log(
+      `Welcome to Polymesh TPS tester. Creating ${n_accounts + 2} transactions`
     );
-    let accountRawNonce = await api.query.system.accountNonce(master_keys[i].address);
-    let account_nonce = new BN(accountRawNonce.toString());
-    nonces.set(master_keys[i].address, account_nonce);  
-  }
+    // Execute each stats collection stage
+    const init_tasks = {
+      'TPS test                            ': n_accounts + 2,
+    };
+    const init_bars = [];
 
-  // Create `n_accounts` signing key accounts
-  console.log("Generating Signing Keys");
-  for (let i = 0; i < n_accounts; i++) {
-    signing_keys.push(
-      keyring.addFromUri("//IssuerSK" + prepend + i.toString(), { name: i.toString() })
-    );
-    let accountRawNonce = await api.query.system.accountNonce(signing_keys[i].address);
-    let account_nonce = new BN(accountRawNonce.toString());
-    nonces.set(signing_keys[i].address, account_nonce);  
-  }
+    // create new container
+    console.log("=== Processing Transactions ===");
+    const init_multibar = new cliProg.MultiBar({
+      format: colors.cyan('{bar}') + ' | {task} | {value}/{total}',
+      hideCursor: true,
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+      clearOnComplete: false,
+      stopOnComplete: true
+    }, cliProg.Presets.shades_grey);
 
-  // Create `n_accounts` claim key accounts
-  console.log("Generating Claim Keys");
-  for (let i = 0; i < n_claim_accounts; i++) {
-    claim_keys.push(
-      keyring.addFromUri("//ClaimIssuerMK" + prepend + i.toString(), { name: i.toString() })
-    );
-    let claimIssuerRawNonce = await api.query.system.accountNonce(claim_keys[i].address);
-    let account_nonce = new BN(claimIssuerRawNonce.toString());
-    nonces.set(claim_keys[i].address, account_nonce);  
-  }
-  // Amount to seed each key with
-  let transfer_amount = 10 * 10**12;
-  updateStorageSize(STORAGE_DIR);
-
-  // Execute each stats collection stage
-  const init_tasks = {
-    'Submit  : TPS                            ': n_accounts,
-    'Complete: TPS                            ': n_accounts,
-    'Submit  : DISTRIBUTE POLY                ': n_claim_accounts + (n_accounts * 2),
-    'Complete: DISTRIBUTE POLY                ': n_claim_accounts + (n_accounts * 2),
-    'Submit  : CREATE ISSUER IDENTITIES       ': n_accounts,
-    'Complete: CREATE ISSUER IDENTITIES       ': n_accounts,
-    'Submit  : ADD SIGNING KEYS               ': n_accounts,
-    'Complete: ADD SIGNING KEYS               ': n_accounts,
-    'Submit  : SET SIGNING KEY ROLES          ': n_accounts,
-    'Complete: SET SIGNING KEY ROLES          ': n_accounts,
-    'Submit  : ISSUE SECURITY TOKEN           ': n_accounts,
-    'Complete: ISSUE SECURITY TOKEN           ': n_accounts,
-    'Submit  : CREATE CLAIM ISSUER IDENTITIES ': n_claim_accounts,
-    'Complete: CREATE CLAIM ISSUER IDENTITIES ': n_claim_accounts,
-    'Submit  : ADD CLAIM ISSUERS              ': n_accounts,
-    'Complete: ADD CLAIM ISSUERS              ': n_accounts,
-    'Submit  : MAKE CLAIMS                    ': n_accounts,
-    'Complete: MAKE CLAIMS                    ': n_accounts,
-  };
-  const init_bars = [];
-  
-  // create new container
-  console.log("=== Processing Transactions ===");
-  const init_multibar = new cliProg.MultiBar({
-    format: colors.cyan('{bar}') + ' | {task} | {value}/{total}',
-    hideCursor: true,
-    barCompleteChar: '\u2588',
-    barIncompleteChar: '\u2591',
-    clearOnComplete: false,
-    stopOnComplete: true
-  }, cliProg.Presets.shades_grey);
-
-  for (let task in init_tasks){
-    const size = init_tasks[task];
-    init_bars.push(init_multibar.create(size, 0, {task: task}));
-  }
-
-  // Get current block
-  let current_header = await api.rpc.chain.getHeader();
-  synced_block = parseInt(current_header.number);
-  let current_block_hash = await api.rpc.chain.getBlockHash(synced_block);
-  let current_block = await api.rpc.chain.getBlock(current_block_hash);
-  let timestamp_extrinsic = current_block["block"]["extrinsics"][0];
-  synced_block_ts = parseInt(JSON.stringify(timestamp_extrinsic.raw["method"].args[0].raw));
-
-  await tps(api, keyring, n_accounts, init_bars[0], init_bars[1], fast); // base currency transfer sanity-check
-  await distributePoly(api, keyring, master_keys.concat(signing_keys).concat(claim_keys), transfer_amount, init_bars[2], init_bars[3], fast);
-  // Need to wait until POLY has been distributed to pay for the next set of transactions
-  await blockTillPoolEmpty(api, n_accounts);
-
-  let issuer_dids = await createIdentities(api, master_keys, "issuer", prepend, init_bars[4], init_bars[5], fast);
-  await addSigningKeys(api, master_keys, issuer_dids, signing_keys, init_bars[6], init_bars[7], fast);
-  await addSigningKeyRoles(api, master_keys, issuer_dids, signing_keys, init_bars[8], init_bars[9], fast);
-  await issueTokenPerDid(api, master_keys, issuer_dids, prepend, init_bars[10], init_bars[11], fast);
-  let claim_issuer_dids = await createIdentities(api, claim_keys, "claim_issuer", prepend, init_bars[12], init_bars[13], fast);
-  // Need to wait until identites have been created before we use them
-  await blockTillPoolEmpty(api, n_accounts);
-
-  await addClaimIssuersToDids(api, master_keys, issuer_dids, claim_issuer_dids, init_bars[14], init_bars[15], fast);
-  // Need to wait until identites have been added as claim issuers
-  await blockTillPoolEmpty(api, n_accounts);
-
-  await addClaimsToDids(api, claim_keys, issuer_dids, claim_issuer_dids, n_claims, init_bars[16], init_bars[17], fast);
-  // All transactions subitted, wait for queue to empty
-  await blockTillPoolEmpty(api, n_accounts);
-  await new Promise(resolve => setTimeout(resolve, 3000));
-  init_multibar.stop();
-
-  updateStorageSize(STORAGE_DIR);
-  console.log(`Total storage size delta: ${current_storage_size - initial_storage_size}KB`);
-  console.log(`Total number of failures: ${fail_count}`)
-  if (fail_count > 0) {
-    for (let err in fail_type) {
-      console.log(`\t` + err + ":" + fail_type[err]);
+    for (let task in init_tasks){
+      const size = init_tasks[task];
+      init_bars.push(init_multibar.create(size, 0, {task: task}));
     }
+    await tps(api, keyring, n_accounts, init_bars[0], init_bars[1], (fast || tps_only)); // base currency transfer sanity-check
+    const uns = await api.rpc.chain.subscribeNewHeads((header) => {
+      console.log("Block " + header.number + " Mined.");
+    });
+    let i = 0;
+    let j = 0;
+    let oldPendingTx = 0;
+    let interval = setInterval(async () => {
+      await api.rpc.author.pendingExtrinsics((extrinsics) => {
+        i++;
+        j++;
+        if (oldPendingTx > extrinsics.length) {
+          init_bars[0].increment(oldPendingTx - extrinsics.length);
+          console.log("Approx TPS: ", (oldPendingTx - extrinsics.length)/j);
+          j = 0;
+        }
+        if(extrinsics.length === 0){
+          console.log(i + " Second passed, No pending extrinsics in the pool.");
+          uns();
+          clearInterval(interval);
+          console.log("DONE");
+          process.exit();
+        }
+        console.log(i + " Second passed, " + extrinsics.length + " pending extrinsics in the pool");
+        oldPendingTx = extrinsics.length;
+      });
+    }, 1000);
+  } else {
+    console.log(
+      `Welcome to Polymesh Stats Collector. Creating ${n_accounts} accounts and DIDs, with ${n_claims} claims per DID.`
+    );
+
+    const initial_storage_size = duDirSize(STORAGE_DIR);
+    console.log(
+      `Initial storage size (${STORAGE_DIR}): ${initial_storage_size / 1024}MB`
+    );
+    current_storage_size = initial_storage_size;
+
+    dave = keyring.addFromUri("//Dave", { name: "Dave" });
+    let daveRawNonce = await api.query.system.accountNonce(dave.address);
+    let dave_nonce = new BN(daveRawNonce.toString());
+    nonces.set(dave.address, dave_nonce);
+
+    // Create `n_accounts` master key accounts
+
+    console.log("Generating Master Keys");
+    for (let i = 0; i < n_accounts; i++) {
+      master_keys.push(
+        keyring.addFromUri("//IssuerMK" + prepend + i.toString(), { name: i.toString() })
+      );
+      console.time("individualRequest");
+      //TODO: Make such calls async.
+      let accountRawNonce = await api.query.system.accountNonce(master_keys[i].address);
+      console.timeEnd("individualRequest");
+      let account_nonce = new BN(accountRawNonce.toString());
+      nonces.set(master_keys[i].address, account_nonce);
+    }
+
+    // Create `n_accounts` signing key accounts
+    console.log("Generating Signing Keys");
+    for (let i = 0; i < n_accounts; i++) {
+      signing_keys.push(
+        keyring.addFromUri("//IssuerSK" + prepend + i.toString(), { name: i.toString() })
+      );
+      let accountRawNonce = await api.query.system.accountNonce(signing_keys[i].address);
+      let account_nonce = new BN(accountRawNonce.toString());
+      nonces.set(signing_keys[i].address, account_nonce);
+    }
+
+    // Create `n_accounts` claim key accounts
+    console.log("Generating Claim Keys");
+    for (let i = 0; i < n_claim_accounts; i++) {
+      claim_keys.push(
+        keyring.addFromUri("//ClaimIssuerMK" + prepend + i.toString(), { name: i.toString() })
+      );
+      let claimIssuerRawNonce = await api.query.system.accountNonce(claim_keys[i].address);
+      let account_nonce = new BN(claimIssuerRawNonce.toString());
+      nonces.set(claim_keys[i].address, account_nonce);
+    }
+    // Amount to seed each key with
+    let transfer_amount = 10 * 10**12;
+    updateStorageSize(STORAGE_DIR);
+
+    // Execute each stats collection stage
+    const init_tasks = {
+      'Submit  : TPS                            ': n_accounts,
+      'Complete: TPS                            ': n_accounts,
+      'Submit  : DISTRIBUTE POLY                ': n_claim_accounts + (n_accounts * 2),
+      'Complete: DISTRIBUTE POLY                ': n_claim_accounts + (n_accounts * 2),
+      'Submit  : CREATE ISSUER IDENTITIES       ': n_accounts,
+      'Complete: CREATE ISSUER IDENTITIES       ': n_accounts,
+      'Submit  : ADD SIGNING KEYS               ': n_accounts,
+      'Complete: ADD SIGNING KEYS               ': n_accounts,
+      'Submit  : SET SIGNING KEY ROLES          ': n_accounts,
+      'Complete: SET SIGNING KEY ROLES          ': n_accounts,
+      'Submit  : ISSUE SECURITY TOKEN           ': n_accounts,
+      'Complete: ISSUE SECURITY TOKEN           ': n_accounts,
+      'Submit  : CREATE CLAIM ISSUER IDENTITIES ': n_claim_accounts,
+      'Complete: CREATE CLAIM ISSUER IDENTITIES ': n_claim_accounts,
+      'Submit  : ADD CLAIM ISSUERS              ': n_accounts,
+      'Complete: ADD CLAIM ISSUERS              ': n_accounts,
+      'Submit  : MAKE CLAIMS                    ': n_accounts,
+      'Complete: MAKE CLAIMS                    ': n_accounts,
+    };
+    const init_bars = [];
+
+    // create new container
+    console.log("=== Processing Transactions ===");
+    const init_multibar = new cliProg.MultiBar({
+      format: colors.cyan('{bar}') + ' | {task} | {value}/{total}',
+      hideCursor: true,
+      barCompleteChar: '\u2588',
+      barIncompleteChar: '\u2591',
+      clearOnComplete: false,
+      stopOnComplete: true
+    }, cliProg.Presets.shades_grey);
+
+    for (let task in init_tasks){
+      const size = init_tasks[task];
+      init_bars.push(init_multibar.create(size, 0, {task: task}));
+    }
+
+    // Get current block
+    let current_header = await api.rpc.chain.getHeader();
+    synced_block = parseInt(current_header.number);
+    let current_block_hash = await api.rpc.chain.getBlockHash(synced_block);
+    let current_block = await api.rpc.chain.getBlock(current_block_hash);
+    let timestamp_extrinsic = current_block["block"]["extrinsics"][0];
+    synced_block_ts = parseInt(JSON.stringify(timestamp_extrinsic.raw["method"].args[0].raw));
+
+    await tps(api, keyring, n_accounts, init_bars[0], init_bars[1], fast); // base currency transfer sanity-check
+    await distributePoly(api, keyring, master_keys.concat(signing_keys).concat(claim_keys), transfer_amount, init_bars[2], init_bars[3], fast);
+    // Need to wait until POLY has been distributed to pay for the next set of transactions
+    await blockTillPoolEmpty(api, n_accounts);
+
+    let issuer_dids = await createIdentities(api, master_keys, "issuer", prepend, init_bars[4], init_bars[5], fast);
+    await addSigningKeys(api, master_keys, issuer_dids, signing_keys, init_bars[6], init_bars[7], fast);
+    await addSigningKeyRoles(api, master_keys, issuer_dids, signing_keys, init_bars[8], init_bars[9], fast);
+    await issueTokenPerDid(api, master_keys, issuer_dids, prepend, init_bars[10], init_bars[11], fast);
+    let claim_issuer_dids = await createIdentities(api, claim_keys, "claim_issuer", prepend, init_bars[12], init_bars[13], fast);
+    // Need to wait until identites have been created before we use them
+    await blockTillPoolEmpty(api, n_accounts);
+
+    await addClaimIssuersToDids(api, master_keys, issuer_dids, claim_issuer_dids, init_bars[14], init_bars[15], fast);
+    // Need to wait until identites have been added as claim issuers
+    await blockTillPoolEmpty(api, n_accounts);
+
+    await addClaimsToDids(api, claim_keys, issuer_dids, claim_issuer_dids, n_claims, init_bars[16], init_bars[17], fast);
+    // All transactions subitted, wait for queue to empty
+    await blockTillPoolEmpty(api, n_accounts);
+    await new Promise(resolve => setTimeout(resolve, 3000));
+    init_multibar.stop();
+
+    updateStorageSize(STORAGE_DIR);
+    console.log(`Total storage size delta: ${current_storage_size - initial_storage_size}KB`);
+    console.log(`Total number of failures: ${fail_count}`)
+    if (fail_count > 0) {
+      for (let err in fail_type) {
+        console.log(`\t` + err + ":" + fail_type[err]);
+      }
+    }
+    console.log(`Transactions processed:`);
+    for (let block_number in block_sizes) {
+      console.log(`\tBlock Number: ` + block_number + "\t\tProcessed: " + block_sizes[block_number] + "\tTime (ms): " + block_times[block_number]);
+    }
+    console.log("DONE");
+    process.exit();
   }
-  console.log(`Transactions processed:`);
-  for (let block_number in block_sizes) {
-    console.log(`\tBlock Number: ` + block_number + "\t\tProcessed: " + block_sizes[block_number] + "\tTime (ms): " + block_times[block_number]);
-  }
-  console.log("DONE");
-  process.exit();
 }
 
 // Spams the network with `n_accounts` transfer transactions in an attempt to measure base
 // currency TPS.
 async function tps(api, keyring, n_accounts, submitBar, completeBar, fast) {
   fail_type["TPS"] = 0;
+  let tmpNonce1;
+  let tmpNonce2;
+  if (fast) {
+    tmpNonce1 = nonces.get(alice.address);
+    nonces.set(alice.address, tmpNonce1.addn(1));
+    tmpNonce2 = nonces.get(bob.address);
+    nonces.set(bob.address, tmpNonce2.addn(1));
+  }
   // Send one half from Alice to Bob
   for (let j = 0; j < Math.floor(n_accounts / 2); j++) {
-
     if (fast) {
-      await api.tx.balances
-      .transfer(bob.address, 10)
+      api.tx.balances
+      .transfer(bob.address, 10000)
       .signAndSend(
         alice,
         { nonce: nonces.get(alice.address) });
@@ -281,7 +353,7 @@ async function tps(api, keyring, n_accounts, submitBar, completeBar, fast) {
         }
       );
     }
-    
+
     nonces.set(alice.address, nonces.get(alice.address).addn(1));
     submitBar.increment();
   }
@@ -289,8 +361,8 @@ async function tps(api, keyring, n_accounts, submitBar, completeBar, fast) {
   // Send the other half from Bob to Alice to leave balances unaltered
   for (let j = Math.floor(n_accounts / 2); j < n_accounts; j++) {
     if (fast) {
-      const unsub = await api.tx.balances
-      .transfer(alice.address, 10)
+      const unsub = api.tx.balances
+      .transfer(alice.address, 10000)
       .signAndSend(
         bob,
         { nonce: nonces.get(bob.address) });
@@ -326,6 +398,24 @@ async function tps(api, keyring, n_accounts, submitBar, completeBar, fast) {
     submitBar.increment();
   }
 
+  if (fast) {
+    //Hold on tight to your seats, releasing the kraken.
+    //Before this tx, all tx submitted had a nonce gap of 1. That means, they are in the pool but they can't be mined yet.
+    //This tx fills the nonce gap which will make all the tx mineable suddenly.
+    //This helps in measuring TPS without the negative effects of latency between validator and script runner (looking at you, yes you).
+    api.tx.balances
+      .transfer(bob.address, 10000)
+      .signAndSend(
+        alice,
+        { nonce: tmpNonce1 }
+      );
+    api.tx.balances
+      .transfer(alice.address, 10000)
+      .signAndSend(
+        bob,
+        { nonce: tmpNonce2 }
+      );
+  }
 }
 
 // Sends transfer_amount to accounts[] from alice
@@ -433,7 +523,7 @@ async function addSigningKeys(api, accounts, dids, signing_accounts, submitBar, 
       .addSigningKeys(dids[i], [signing_key])
       .signAndSend(accounts[i],
         { nonce: nonces.get(accounts[i].address) });
-    } else {    
+    } else {
       const unsub = await api.tx.identity
         .addSigningKeys(dids[i], [signing_key])
         .signAndSend(accounts[i],
@@ -520,7 +610,7 @@ async function issueTokenPerDid(api, accounts, dids, prepend, submitBar, complet
       const unsub = await api.tx.asset
       .createToken(dids[i], ticker, ticker, 1000000, true)
       .signAndSend(accounts[i],
-        { nonce: nonces.get(accounts[i].address) },        
+        { nonce: nonces.get(accounts[i].address) },
         ({ events = [], status }) => {
         if (status.isFinalized) {
           let new_token_ok = false;
@@ -605,7 +695,7 @@ async function addClaimsToDids(api, accounts, dids, claim_dids, n_claims, submit
       const unsub = await api.tx.identity
       .addClaim(dids[i], claim_dids[i%claim_dids.length], claims)
       .signAndSend(accounts[i%claim_dids.length],
-        { nonce: nonces.get(accounts[i%claim_dids.length].address) },        
+        { nonce: nonces.get(accounts[i%claim_dids.length].address) },
         ({ events = [], status }) => {
         if (status.isFinalized) {
           let new_claim_ok = false;
@@ -627,7 +717,7 @@ async function addClaimsToDids(api, accounts, dids, claim_dids, n_claims, submit
     }
     nonces.set(accounts[i%claim_dids.length].address, nonces.get(accounts[i%claim_dids.length].address).addn(1));
     submitBar.increment();
-  }  
+  }
 }
 
 async function blockTillPoolEmpty(api, expected_tx_count) {
