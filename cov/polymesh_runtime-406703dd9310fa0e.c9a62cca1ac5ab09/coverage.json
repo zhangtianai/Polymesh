@@ -1,0 +1,26 @@
+{
+  "files": [
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/primitives/src/did_record.rs", "percent_covered": "85.71", "covered_lines": "6", "total_lines": "7"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/primitives/src/signing_key.rs", "percent_covered": "75.76", "covered_lines": "25", "total_lines": "33"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/general_tm.rs", "percent_covered": "60.22", "covered_lines": "56", "total_lines": "93"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/asset.rs", "percent_covered": "87.09", "covered_lines": "344", "total_lines": "395"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/primitives/src/identity_role.rs", "percent_covered": "0.00", "covered_lines": "0", "total_lines": "13"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/percentage_tm.rs", "percent_covered": "40.91", "covered_lines": "9", "total_lines": "22"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/simple_token.rs", "percent_covered": "95.65", "covered_lines": "44", "total_lines": "46"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/balances.rs", "percent_covered": "36.00", "covered_lines": "54", "total_lines": "150"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/utils.rs", "percent_covered": "100.00", "covered_lines": "7", "total_lines": "7"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/registry.rs", "percent_covered": "100.00", "covered_lines": "33", "total_lines": "33"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/primitives/src/key.rs", "percent_covered": "88.46", "covered_lines": "23", "total_lines": "26"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/identity.rs", "percent_covered": "98.00", "covered_lines": "392", "total_lines": "400"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/exemption.rs", "percent_covered": "100.00", "covered_lines": "6", "total_lines": "6"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/lib.rs", "percent_covered": "100.00", "covered_lines": "3", "total_lines": "3"},
+    {"file": "/home/max/Desktop/Polymesh/Polymesh/runtime/src/dividend.rs", "percent_covered": "87.29", "covered_lines": "261", "total_lines": "299"}
+  ],
+  "percent_covered": "82.39",
+  "covered_lines": 1263,
+  "total_lines": 1533,
+  "percent_low": 25,
+  "percent_high": 75,
+  "command": "polymesh_runtime-406703dd9310fa0e",
+  "date": "2019-11-06 13:35:33"
+}
