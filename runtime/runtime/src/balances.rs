@@ -233,61 +233,7 @@ pub trait Subtrait<I: Instance = DefaultInstance>: system::Trait {
     type Identity: IdentityTrait<Self::Balance>;
 }
 
-pub trait Trait<I: Instance = DefaultInstance>: system::Trait {
-    /// The balance of an account.
-    type Balance: Parameter
-        + Member
-        + SimpleArithmetic
-        + Codec
-        + Default
-        + Copy
-        + MaybeSerializeDebug
-        + From<u128>
-        + From<Self::BlockNumber>;
 
-    /// A function that is invoked when the free-balance has fallen below the existential deposit and
-    /// has been reduced to zero.
-    ///
-    /// Gives a chance to clean up resources associated with the given account.
-    type OnFreeBalanceZero: OnFreeBalanceZero<Self::AccountId>;
-
-    /// Handler for when a new account is created.
-    type OnNewAccount: OnNewAccount<Self::AccountId>;
-
-    /// Handler for the unbalanced reduction when taking transaction fees.
-    type TransactionPayment: OnUnbalanced<NegativeImbalance<Self, I>>;
-
-    /// Handler for the unbalanced reduction when taking fees associated with balance
-    /// transfer (which may also include account creation).
-    type TransferPayment: OnUnbalanced<NegativeImbalance<Self, I>>;
-
-    /// Handler for the unbalanced reduction when removing a dust account.
-    type DustRemoval: OnUnbalanced<NegativeImbalance<Self, I>>;
-
-    /// The overarching event type.
-    type Event: From<Event<Self, I>> + Into<<Self as system::Trait>::Event>;
-
-    /// The minimum amount required to keep an account open.
-    type ExistentialDeposit: Get<Self::Balance>;
-
-    /// The fee required to make a transfer.
-    type TransferFee: Get<Self::Balance>;
-
-    /// The fee required to create an account.
-    type CreationFee: Get<Self::Balance>;
-
-    /// The fee to be paid for making a transaction; the base.
-    type TransactionBaseFee: Get<Self::Balance>;
-
-    /// The fee to be paid for making a transaction; the per-byte portion.
-    type TransactionByteFee: Get<Self::Balance>;
-
-    /// Convert a weight value into a deductible fee based on the currency type.
-    type WeightToFee: Convert<Weight, Self::Balance>;
-
-    /// Used to charge fee to identity rather than user directly
-    type Identity: IdentityTrait<Self::Balance>;
-}
 
 impl<T: Trait<I>, I: Instance> Subtrait<I> for T {
     type Balance = T::Balance;
@@ -301,20 +247,6 @@ impl<T: Trait<I>, I: Instance> Subtrait<I> for T {
     type WeightToFee = T::WeightToFee;
     type Identity = T::Identity;
 }
-
-decl_event!(
-	pub enum Event<T, I: Instance = DefaultInstance> where
-		<T as system::Trait>::AccountId,
-		<T as Trait<I>>::Balance
-	{
-		/// A new account was created.
-		NewAccount(AccountId, Balance),
-		/// An account was reaped.
-		ReapedAccount(AccountId),
-		/// Transfer succeeded (from, to, value, fees).
-		Transfer(AccountId, AccountId, Balance, Balance),
-	}
-);
 
 /// Struct to encode the vesting schedule of an individual account.
 #[derive(Encode, Decode, Copy, Clone, PartialEq, Eq)]

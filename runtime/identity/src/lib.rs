@@ -42,59 +42,29 @@
 //! # TODO
 //!  - KYC is mocked: see [has_valid_kyc](./struct.Module.html#method.has_valid_kyc)
 
+#![cfg_attr(not(feature = "std"), no_std)]
+
 use rstd::{convert::TryFrom, prelude::*};
 
-use crate::balances;
-use crate::constants::did::USER;
+use polimesh_runtime_common::{
+    constants::did::USER,
+    balances,
+    identity::{ Event, RawEvent, ClaimMetaData, Claim, ClaimValue, IdentityTrait },
+};
+// use balances, constants::did::USER};
 use primitives::{DidRecord, IdentityId, Key, KeyType, Permission, SigningKey};
 
 use codec::Encode;
 use sr_io::blake2_256;
 use sr_primitives::{traits::Dispatchable, DispatchError};
 use srml_support::{
-    decl_event, decl_module, decl_storage,
+    decl_module, decl_storage,
     dispatch::Result,
     ensure,
     traits::{Currency, ExistenceRequirement, WithdrawReason},
     Parameter,
 };
 use system::{self, ensure_signed};
-
-#[derive(codec::Encode, codec::Decode, Default, Clone, PartialEq, Eq, Debug)]
-pub struct Claim<U> {
-    issuance_date: U,
-    expiry: U,
-    claim_value: ClaimValue,
-}
-
-#[derive(codec::Encode, codec::Decode, Default, Clone, PartialEq, Eq, Debug)]
-pub struct ClaimMetaData {
-    claim_key: Vec<u8>,
-    claim_issuer: IdentityId,
-}
-
-#[derive(codec::Encode, codec::Decode, Default, Clone, PartialEq, Eq, Debug)]
-pub struct ClaimValue {
-    pub data_type: DataTypes,
-    pub value: Vec<u8>,
-}
-
-#[derive(codec::Encode, codec::Decode, Clone, Copy, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub enum DataTypes {
-    U8,
-    U16,
-    U32,
-    U64,
-    U128,
-    Bool,
-    VecU8,
-}
-
-impl Default for DataTypes {
-    fn default() -> Self {
-        DataTypes::VecU8
-    }
-}
 
 /// Keys could be linked to several identities (`IdentityId`) as master key or signing key.
 /// Master key or external type signing key are restricted to be linked to just one identity.
@@ -204,7 +174,8 @@ decl_module! {
 
             // 2. Apply changes to our extrinsics.
             // TODO: Subtract the fee
-            let _imbalance = <balances::Module<T> as Currency<_>>::withdraw(
+            // let _imbalance = <balances::Module<T> as Currency<_>>::withdraw(
+            let _imbalance = <Module<T> as Currency<_>>::withdraw(
                 &sender,
                 Self::did_creation_fee(),
                 WithdrawReason::Fee,
@@ -526,47 +497,6 @@ decl_module! {
     }
 }
 
-decl_event!(
-    pub enum Event<T>
-    where
-        AccountId = <T as system::Trait>::AccountId,
-        Moment = <T as timestamp::Trait>::Moment,
-    {
-        /// DID, master key account ID, signing keys
-        NewDid(IdentityId, AccountId, Vec<SigningKey>),
-
-        /// DID, new keys
-        SigningKeysAdded(IdentityId, Vec<SigningKey>),
-
-        /// DID, the keys that got removed
-        SigningKeysRemoved(IdentityId, Vec<Key>),
-
-        /// DID, updated signing key, previous permissions
-        SigningPermissionsUpdated(IdentityId, SigningKey, Vec<Permission>),
-
-        /// DID, old master key account ID, new key
-        NewMasterKey(IdentityId, AccountId, Key),
-
-        /// DID, claim issuer DID
-        NewClaimIssuer(IdentityId, IdentityId),
-
-        /// DID, removed claim issuer DID
-        RemovedClaimIssuer(IdentityId, IdentityId),
-
-        /// DID, claim issuer DID, claims
-        NewClaims(IdentityId, ClaimMetaData, Claim<Moment>),
-
-        /// DID, claim issuer DID, claim
-        RevokedClaim(IdentityId, ClaimMetaData),
-
-        /// DID
-        NewIssuer(IdentityId),
-
-        /// DID queried
-        DidQuery(Key, IdentityId),
-    }
-);
-
 impl<T: Trait> Module<T> {
     /// Private and not sanitized function. It is designed to be used internally by
     /// others sanitezed functions.
@@ -792,7 +722,7 @@ impl<T: Trait> Module<T> {
     }
 
     /// It set/reset the current identity.
-    pub(super) fn set_current_did(did_opt: Option<IdentityId>) {
+    pub fn set_current_did(did_opt: Option<IdentityId>) {
         if let Some(did) = did_opt {
             <CurrentDid>::put(did);
         } else {
@@ -801,16 +731,6 @@ impl<T: Trait> Module<T> {
     }
 }
 
-pub trait IdentityTrait<T> {
-    fn get_identity(key: &Key) -> Option<IdentityId>;
-    fn is_authorized_key(did: IdentityId, key: &Key) -> bool;
-    fn is_authorized_with_permissions(
-        did: IdentityId,
-        key: &Key,
-        permissions: Vec<Permission>,
-    ) -> bool;
-    fn is_master_key(did: IdentityId, key: &Key) -> bool;
-}
 
 impl<T: Trait> IdentityTrait<T::Balance> for Module<T> {
     fn get_identity(key: &Key) -> Option<IdentityId> {
@@ -839,6 +759,7 @@ impl<T: Trait> IdentityTrait<T::Balance> for Module<T> {
 mod tests {
     use super::*;
     use primitives::KeyType;
+    use polimesh_runtime_common::identity::DataTypes;
 
     use sr_io::{with_externalities, TestExternalities};
     use sr_primitives::{

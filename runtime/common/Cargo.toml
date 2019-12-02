@@ -1,0 +1,32 @@
+[package]
+name = "polymesh-runtime-common"
+version = "0.1.0"
+authors = ["Polymath"]
+edition = "2018"
+
+[dependencies]
+codec = { package = "parity-scale-codec", version = "1.1.0", default-features = false, features = ["derive"] }
+sr-primitives = { git = "https://github.com/paritytech/substrate", rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+babe = { package = "substrate-consensus-babe", git = "https://github.com/paritytech/substrate", rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+babe-primitives = { package = "substrate-consensus-babe-primitives", git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+rstd = { package = "sr-std", git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+system = { package = "srml-system", git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+srml-support = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+timestamp = { package = "srml-timestamp", git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+
+
+primitives = { package = "polymesh-primitives", path = "../../primitives", default-features = false }
+
+[features]
+equalize = []
+default = ["std", "equalize"]
+no_std = []
+only-staking = []
+std = [ 
+	"rstd/std",
+	"system/std",
+	"codec/std",
+	"srml-support/std",
+	"timestamp/std",
+]
+

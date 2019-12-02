@@ -1,0 +1,44 @@
+[package]
+name = "polymesh-runtime-identity"
+version = "0.1.0"
+authors = ["Polymath"]
+edition = "2018"
+# build = "build.rs"
+
+[dependencies]
+serde_json = { version = "1.0.41", default-features = false }
+
+codec = { package = "parity-scale-codec", version = "1.1.0", default-features = false, features = ["derive"] }
+rstd = { package = "sr-std", git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+sr-io = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+srml-support = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+sr-primitives = { git = "https://github.com/paritytech/substrate", rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+babe = { package = "substrate-consensus-babe", git = "https://github.com/paritytech/substrate", rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+babe-primitives = { package = "substrate-consensus-babe-primitives", git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+system = { package = "srml-system", git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+timestamp = { package = "srml-timestamp", git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+substrate-primitives = { git = "https://github.com/paritytech/substrate", default-features = false, rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+
+primitives = { package = "polymesh-primitives", path = "../../primitives", default-features = false }
+polimesh-runtime-common = { package = "polymesh-runtime-common", path = "../common", default-features = false }
+
+# [dev-dependencies]
+# test-client = { package = "substrate-test-runtime-client", git = "https://github.com/paritytech/substrate", rev = "7d7e74fb77b6bee2ce9d6ebafcae09caff2d0e50" }
+
+# [build-dependencies]
+# wasm-builder-runner = { package = "substrate-wasm-builder-runner", version = "1.0.2" }
+
+[features]
+equalize = []
+default = ["std", "equalize"]
+no_std = []
+only-staking = []
+std = [
+	"rstd/std",
+	"sr-io/std",
+	"srml-support/std",
+	"sr-primitives/std",
+	"timestamp/std",
+	"substrate-primitives/std",
+]
+
