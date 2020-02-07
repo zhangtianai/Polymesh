@@ -65,7 +65,7 @@ use frame_support::{
     ensure,
     traits::{Currency, ExistenceRequirement, WithdrawReason},
     weights::{GetDispatchInfo, SimpleDispatchInfo},
-    Parameter,
+    Parameter, StorageMap
 };
 use frame_system::{self as system, ensure_signed};
 use group::GroupTrait;
@@ -234,8 +234,12 @@ decl_storage! {
         /// All links that an identity/key has
         pub Links get(fn links): map(Signatory, u64) => Link<T::Moment>;
 
+        pub DoubleTest: double_map hasher(blake2_256) Signatory, blake2_256(u64) => Authorization<T::Moment>;
+
         /// Link id of the latest auth of an identity/key. Used to allow iterating over links
         pub LastLink get(fn last_link): map Signatory => u64;
+
+
     }
 }
 
@@ -1054,6 +1058,24 @@ decl_module! {
             Self::deposit_event(RawEvent::MyKycStatus(my_did, is_kyced, kyc_provider));
             Ok(())
         }
+
+        pub fn get_my_auths(origin) -> DispatchResult {
+            let sender = ensure_signed(origin)?;
+            let sender_key = AccountKey::try_from(sender.encode())?;
+            let my_did =  match Self::current_did() {
+                Some(x) => x,
+                None => {
+                    if let Some(did) = Self::get_identity(&sender_key) {
+                        did
+                    } else {
+                        return Err(Error::<T>::NoDIDFound.into());
+                    }
+                }
+            };
+            let my_auths = <DoubleTest<T>>::iter_prefix(Signatory::Identity(my_did));
+            my_auths.for_each(|auth| Self::deposit_event(RawEvent::Auth(auth.authorization_data)));
+            Ok(())
+        }
     }
 }
 
@@ -1132,6 +1154,8 @@ decl_event!(
 
         /// Signatory approved a previous request to join to a target identity.
         SignerJoinedToIdentityApproved( Signatory, IdentityId),
+
+        Auth(AuthorizationData),
     }
 );
 
@@ -1183,6 +1207,7 @@ impl<T: Trait> Module<T> {
         };
 
         <LastAuthorization>::insert(&target, new_nonce);
+        <DoubleTest<T>>::insert(&target, &new_nonce, auth.clone());
         <Authorizations<T>>::insert((target, new_nonce), auth);
 
         Self::deposit_event(RawEvent::NewAuthorization(
@@ -1212,6 +1237,7 @@ impl<T: Trait> Module<T> {
                 prev_auth.next_authorization = next_auth
             });
         }
+        <DoubleTest<T>>::remove(&target, &auth_id);
         <Authorizations<T>>::remove((target, auth_id));
         Self::deposit_event(RawEvent::AuthorizationRemoved(auth_id, target));
     }
