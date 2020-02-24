@@ -293,18 +293,18 @@ impl pallet_staking::Trait for Runtime {
     type SlashDeferDuration = SlashDeferDuration;
     /// A super-majority of the committee can cancel the slash.
     type SlashCancelOrigin =
-        committee::EnsureProportionAtLeast<_3, _4, AccountId, GovernanceCommittee>;
+        frame_system::EnsureRoot<Self::AccountId>;
     type SessionInterface = Self;
     type RewardCurve = RewardCurve;
     type RequiredAddOrigin =
-        committee::EnsureProportionAtLeast<_2, _3, AccountId, GovernanceCommittee>;
+        frame_system::EnsureRoot<Self::AccountId>;
     type RequiredRemoveOrigin =
-        committee::EnsureProportionAtLeast<_2, _3, AccountId, GovernanceCommittee>;
+        frame_system::EnsureRoot<Self::AccountId>;
     type RequiredComplianceOrigin =
-        committee::EnsureProportionAtLeast<_2, _3, AccountId, GovernanceCommittee>;
+        frame_system::EnsureRoot<Self::AccountId>;
     /// A super-majority of the council can enforce global commission.
     type RequiredCommissionOrigin =
-        committee::EnsureProportionAtLeast<_3, _4, AccountId, GovernanceCommittee>;
+        frame_system::EnsureRoot<Self::AccountId>;
 }
 
 type GovernanceCommittee = committee::Instance1;
@@ -312,16 +312,16 @@ impl committee::Trait<GovernanceCommittee> for Runtime {
     type Origin = Origin;
     type Proposal = Call;
     type CommitteeOrigin =
-        committee::EnsureProportionAtLeast<_2, _3, AccountId, GovernanceCommittee>;
+        frame_system::EnsureRoot<Self::AccountId>;
     type Event = Event;
 }
 
 impl group::Trait<group::Instance1> for Runtime {
     type Event = Event;
-    type AddOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
-    type RemoveOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
-    type SwapOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
-    type ResetOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
+    type AddOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type RemoveOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type SwapOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type ResetOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type MembershipInitialized = PolymeshCommittee;
     type MembershipChanged = PolymeshCommittee;
 }
@@ -406,8 +406,8 @@ parameter_types! {
 
 impl pallet_treasury::Trait for Runtime {
     type Currency = Balances;
-    type ApproveOrigin = committee::EnsureProportionAtLeast<_2, _3, AccountId, GovernanceCommittee>;
-    type RejectOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
+    type ApproveOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type RejectOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type Event = Event;
     type ProposalRejection = ();
     type ProposalBond = ProposalBond;
@@ -436,7 +436,7 @@ impl pallet_im_online::Trait for Runtime {
     type ReportUnresponsiveness = Offences;
     type SessionDuration = SessionDuration;
     type CommitteeOrigin =
-        committee::EnsureProportionAtLeast<_2, _3, AccountId, GovernanceCommittee>;
+        frame_system::EnsureRoot<Self::AccountId>;
 }
 
 impl pallet_grandpa::Trait for Runtime {
@@ -533,10 +533,10 @@ impl dividend::Trait for Runtime {
 
 impl group::Trait<group::Instance2> for Runtime {
     type Event = Event;
-    type AddOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
-    type RemoveOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
-    type SwapOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
-    type ResetOrigin = committee::EnsureProportionMoreThan<_1, _2, AccountId, GovernanceCommittee>;
+    type AddOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type RemoveOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type SwapOrigin = frame_system::EnsureRoot<Self::AccountId>;
+    type ResetOrigin = frame_system::EnsureRoot<Self::AccountId>;
     type MembershipInitialized = ();
     type MembershipChanged = ();
 }
