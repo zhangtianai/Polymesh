@@ -2,7 +2,7 @@
 use crate::{
     asset, bridge, contracts_wrapper, dividend, exemption, general_tm,
     impls::{Author, CurrencyToVoteHandler, LinearWeightToFee, TargetedFeeAdjustment},
-    multisig, percentage_tm, simple_token, statistics, sto_capped,
+    multisig, percentage_tm, simple, simple_token, statistics, sto_capped,
     update_did_signed_extension::UpdateDid,
     voting,
 };
@@ -330,6 +330,11 @@ impl pallet_mips::Trait for Runtime {
     type Event = Event;
 }
 
+impl simple::Trait for Runtime {
+    type Proposal = Call;
+    type Event = Event;
+}
+
 parameter_types! {
     pub const LaunchPeriod: BlockNumber = 28 * 24 * 60 * MINUTES;
     pub const VotingPeriod: BlockNumber = 28 * 24 * 60 * MINUTES;
@@ -593,6 +598,7 @@ construct_runtime!(
         SimpleToken: simple_token::{Module, Call, Storage, Event<T>, Config<T>},
         CddServiceProviders: group::<Instance2>::{Module, Call, Storage, Event<T>, Config<T>},
         Statistic: statistics::{Module, Call, Storage },
+        Simple: simple::{Module, Call, Storage, Event<T>},
     }
 );
 

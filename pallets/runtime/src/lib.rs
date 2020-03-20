@@ -8,6 +8,7 @@ pub mod impls;
 pub mod statistics;
 
 pub mod asset;
+pub mod simple;
 
 #[cfg(feature = "std")]
 pub use pallet_staking::{Commission, StakerStatus};
