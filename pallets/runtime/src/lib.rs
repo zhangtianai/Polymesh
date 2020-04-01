@@ -68,3 +68,6 @@ pub use sp_runtime::{Perbill, Permill};
 
 #[cfg(test)]
 pub mod test;
+
+#[cfg(feature = "runtime-benchmarks")]
+pub mod benches;

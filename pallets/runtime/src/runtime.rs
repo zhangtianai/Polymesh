@@ -880,4 +880,22 @@ impl_runtime_apis! {
             Identity::get_did_records(did)
         }
     }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    impl frame_benchmarking::Benchmark<Block> for Runtime {
+	fn dispatch_benchmark(
+	    module: Vec<u8>,
+	    extrinsic: Vec<u8>,
+	    steps: Vec<u32>,
+	    repeat: u32,
+	) -> Option<Vec<frame_benchmarking::BenchmarkResults>> {
+            use crate::benches::asset;
+	    use frame_benchmarking::Benchmarking;
+
+	    match module.as_slice() {
+		b"runtime-asset" | b"asset" => Asset::run_benchmark(extrinsic, steps, repeat).ok(),
+		_ => None,
+	    }
+	}
+    }
 }
