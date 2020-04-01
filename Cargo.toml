@@ -73,6 +73,13 @@ contracts = { package = "pallet-contracts", git = "https://github.com/paritytech
 sc-authority-discovery = { package = "sc-authority-discovery", git = "https://github.com/paritytech/substrate", rev = "a439a7aa5a9a3df2a42d9b25ea04288d3a0866e8" }
 sp-authority-discovery = { package = "sp-authority-discovery", git = "https://github.com/paritytech/substrate", rev = "a439a7aa5a9a3df2a42d9b25ea04288d3a0866e8" }
 contracts-rpc = { package = "pallet-contracts-rpc", git = "https://github.com/paritytech/substrate", rev = "a439a7aa5a9a3df2a42d9b25ea04288d3a0866e8" }
+frame-benchmarking = { package = "frame-benchmarking", git = "https://github.com/paritytech/substrate", default-features = false, rev = "a439a7aa5a9a3df2a42d9b25ea04288d3a0866e8", optional = true }
 
 [build-dependencies]
 vergen = "3.1.0"
+
+[features]
+runtime-benchmarks = [
+    "frame-benchmarking",
+    "polymesh-runtime/runtime-benchmarks",
+]
