@@ -1,4 +1,5 @@
-use super::{
+mod common;
+use common::{
     ext_builder::PROTOCOL_OP_BASE_FEE,
     storage::{make_account, make_account_without_cdd, TestStorage},
     ExtBuilder,

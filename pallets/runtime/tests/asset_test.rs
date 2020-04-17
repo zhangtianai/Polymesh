@@ -1,4 +1,5 @@
-use super::{
+mod common;
+use common::{
     storage::{make_account, TestStorage},
     ExtBuilder,
 };
@@ -80,7 +81,7 @@ fn issuers_can_create_and_rename_tokens() {
                 true,
                 token.asset_type.clone(),
                 identifiers.clone(),
-                Some(funding_round_name.clone()),
+                Some(funding_round_name.clone())
             ),
             AssetError::TotalSupplyAboveLimit
         );

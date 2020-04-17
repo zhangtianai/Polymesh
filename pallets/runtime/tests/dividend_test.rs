@@ -1,8 +1,9 @@
-use super::{
+mod common;
+use chrono::{prelude::*, Duration};
+use common::{
     storage::{make_account, TestStorage},
     ExtBuilder,
 };
-use chrono::{prelude::*, Duration};
 use frame_support::assert_ok;
 use frame_support::traits::Currency;
 use frame_system::ensure_signed;

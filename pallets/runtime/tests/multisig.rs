@@ -1,4 +1,5 @@
-use super::{
+mod common;
+use common::{
     ext_builder::PROTOCOL_OP_BASE_FEE,
     storage::{register_keyring_account, Call, TestStorage},
     ExtBuilder,
