@@ -32,6 +32,8 @@ members = [
     "pallets/im-online",
     "pallets/balances",
     "pallets/committee",
+    "pallets/committee/rpc",
+    "pallets/committee/rpc/runtime-api",
     "pallets/group",
     "pallets/protocol-fee",
     "pallets/multisig",
@@ -61,6 +63,8 @@ im-online = { package = "pallet-im-online", path = "pallets/im-online", default-
 pallet-protocol-fee = { package = "pallet-protocol-fee", path = "pallets/protocol-fee", default-features = false }
 pallet-protocol-fee-rpc = { package = "pallet-protocol-fee-rpc", path = "pallets/protocol-fee/rpc", default-features = false }
 pallet-treasury = { package = "pallet-treasury", path = "pallets/treasury", default-features = false }
+pallet-committee-rpc = { package = "pallet-committee-rpc", path = "pallets/committee/rpc", default-features = false }
+pallet-committee-rpc-runtime-api = { package = "pallet-committee-rpc-runtime-api", path = "pallets/committee/rpc/runtime-api", default-features = false }
 
 parking_lot = "0.10.0"
 tokio = "0.2.13"

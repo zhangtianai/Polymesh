@@ -23,6 +23,7 @@ pallet-staking = { package = "pallet-staking", path = "../../staking", default-f
 pallet-staking-reward-curve = { version = "2.0.0",  path = "../../staking/reward-curve", default-features = false  }
 pallet-pips-rpc-runtime-api = { package = "pallet-pips-rpc-runtime-api", path = "../../pips/rpc/runtime-api", default-features = false  }
 pallet-pips = { package = "pallet-pips", path = "../../pips", default-features = false  }
+pallet-committee-rpc-runtime-api = { package = "pallet-committee-rpc-runtime-api", path = "../../committee/rpc/runtime-api", default-features = false  }
 pallet-committee = { package = "pallet-committee", path = "../../committee", default-features = false }
 pallet-multisig = { package = "pallet-multisig", path = "../../multisig", default-features = false }
 pallet-treasury = { package = "pallet-treasury", path = "../../treasury", default-features = false }

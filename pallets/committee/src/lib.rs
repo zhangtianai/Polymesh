@@ -546,6 +546,13 @@ impl<T: Trait<I>, I: Instance> InitializeMembers<IdentityId> for Module<T, I> {
     }
 }
 
+// RPC calls
+impl<T: Trait<I>, I: Instance> Module<T, I> {
+    pub fn voted_on(_id: IdentityId) -> Vec<u32> {
+        Vec::new()
+    }
+}
+
 pub struct EnsureProportionMoreThan<N: U32, D: U32, AccountId, I = DefaultInstance>(
     sp_std::marker::PhantomData<(N, D, AccountId, I)>,
 );
