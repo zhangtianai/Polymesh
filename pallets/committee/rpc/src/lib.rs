@@ -14,8 +14,8 @@ use std::sync::Arc;
 #[rpc]
 pub trait CommitteeApi<BlockHash, IdentityId> {
     /// Retrieves proposals `address` voted on
-    #[rpc(name = "committee_votedOn")]
-    fn voted_on(&self, address: IdentityId, at: Option<BlockHash>) -> Result<Vec<u32>>;
+    #[rpc(name = "polymeshCommittee_votingActivity")]
+    fn voting_activity(&self, did: IdentityId, at: Option<BlockHash>) -> Result<Vec<u32>>;
 }
 
 /// An implementation of committee specific RPC methods.
@@ -51,17 +51,17 @@ where
     C::Api: CommitteeRuntimeApi<Block, IdentityId>,
     IdentityId: Codec,
 {
-    fn voted_on(
+    fn voting_activity(
         &self,
-        address: IdentityId,
+        did: IdentityId,
         at: Option<<Block as BlockT>::Hash>,
     ) -> Result<Vec<u32>> {
         let api = self.client.runtime_api();
         let at = BlockId::hash(at.unwrap_or_else(|| self.client.info().best_hash));
 
-        let result = api.voted_on(&at, address).map_err(|e| RpcError {
+        let result = api.voting_activity(&at, did).map_err(|e| RpcError {
             code: ErrorCode::ServerError(Error::RuntimeError as i64),
-            message: "Unable to query voted_on.".into(),
+            message: "Unable to query voting_activity.".into(),
             data: Some(format!("{:?}", e).into()),
         })?;
 

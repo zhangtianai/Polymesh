@@ -5,7 +5,6 @@
 use codec::{Codec, Decode, Encode};
 #[cfg(feature = "std")]
 use serde::{Deserialize, Serialize};
-use sp_runtime::traits::{SaturatedConversion, UniqueSaturatedInto};
 use sp_std::{prelude::*, vec::Vec};
 
 sp_api::decl_runtime_apis! {
@@ -14,7 +13,7 @@ sp_api::decl_runtime_apis! {
     where
         IdentityId: Codec,
     {
-        /// Retrieve referendums `address` voted on.
-        fn voted_on(address: IdentityId) -> Vec<u32>;
+        /// Retrieve referendums `did` voted on.
+        fn voting_activity(did: IdentityId) -> Vec<u32>;
     }
 }

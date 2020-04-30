@@ -912,6 +912,13 @@ impl_runtime_apis! {
         }
     }
 
+    impl pallet_committee_rpc_runtime_api::CommitteeApi<Block, IdentityId> for Runtime {
+        /// Proposals `did` voted on
+        fn voting_activity(did: IdentityId) -> Vec<u32> {
+            PolymeshCommittee::voting_activity(did)
+        }
+    }
+
     impl pallet_protocol_fee_rpc_runtime_api::ProtocolFeeApi<
         Block,
     > for Runtime {

@@ -147,6 +147,7 @@ std = [
 	"pallet-babe/std",
 	"pallet-pips/std",
 	"pallet-committee/std",
+	"pallet-committee-rpc-runtime-api/std",
 	"pallet-multisig/std",
 	"pallet-pips-rpc-runtime-api/std",
 	"frame-support/std",

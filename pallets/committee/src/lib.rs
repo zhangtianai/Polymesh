@@ -548,8 +548,10 @@ impl<T: Trait<I>, I: Instance> InitializeMembers<IdentityId> for Module<T, I> {
 
 // RPC calls
 impl<T: Trait<I>, I: Instance> Module<T, I> {
-    pub fn voted_on(_id: IdentityId) -> Vec<u32> {
-        Vec::new()
+    pub fn voting_activity(_id: IdentityId) -> Vec<u32> {
+        let mut votes = Vec::new();
+        votes.push(99);
+        votes
     }
 }
 
