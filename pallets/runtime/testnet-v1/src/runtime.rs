@@ -20,6 +20,7 @@ use pallet_group as group;
 use pallet_identity as identity;
 use pallet_multisig as multisig;
 use pallet_protocol_fee as protocol_fee;
+use pallet_settlement as settlement;
 use pallet_statistics as statistics;
 use pallet_treasury as treasury;
 use pallet_utility as utility;
@@ -398,6 +399,11 @@ impl treasury::Trait for Runtime {
     type Currency = Balances;
 }
 
+impl settlement::Trait for Runtime {
+    type Event = Event;
+    type Currency = Balances;
+}
+
 impl pallet_offences::Trait for Runtime {
     type Event = Event;
     type IdentificationTuple = pallet_session::historical::IdentificationTuple<Self>;
@@ -593,6 +599,7 @@ construct_runtime!(
         StoCapped: sto_capped::{Module, Call, Storage, Event<T>},
         Exemption: exemption::{Module, Call, Storage, Event},
         SimpleToken: simple_token::{Module, Call, Storage, Event<T>},
+        Settlement: settlement::{Module, Call, Event<T>},
         CddServiceProviders: group::<Instance2>::{Module, Call, Storage, Event<T>, Config<T>},
         Statistic: statistics::{Module, Call, Storage},
         ProtocolFee: protocol_fee::{Module, Call, Storage, Event<T>, Config<T>},
