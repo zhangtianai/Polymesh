@@ -58,3 +58,4 @@ pub const TREASURY_MODULE_ID: ModuleId = ModuleId(*b"pm/trsry");
 pub const BRR_MODULE_ID: ModuleId = ModuleId(*b"pm/blrwr");
 pub const GC_MODULE_ID: ModuleId = ModuleId(*b"pm/govcm");
 pub const CDD_MODULE_ID: ModuleId = ModuleId(*b"pm/cusdd");
+pub const SETTLEMENT_MODULE_ID: ModuleId = ModuleId(*b"pm/setmn");

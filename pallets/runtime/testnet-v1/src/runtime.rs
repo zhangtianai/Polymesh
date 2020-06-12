@@ -401,7 +401,6 @@ impl treasury::Trait for Runtime {
 
 impl settlement::Trait for Runtime {
     type Event = Event;
-    type Currency = Balances;
 }
 
 impl pallet_offences::Trait for Runtime {
@@ -599,7 +598,7 @@ construct_runtime!(
         StoCapped: sto_capped::{Module, Call, Storage, Event<T>},
         Exemption: exemption::{Module, Call, Storage, Event},
         SimpleToken: simple_token::{Module, Call, Storage, Event<T>},
-        Settlement: settlement::{Module, Call, Event<T>},
+        Settlement: settlement::{Module, Call, Storage, Event<T>},
         CddServiceProviders: group::<Instance2>::{Module, Call, Storage, Event<T>, Config<T>},
         Statistic: statistics::{Module, Call, Storage},
         ProtocolFee: protocol_fee::{Module, Call, Storage, Event<T>, Config<T>},
