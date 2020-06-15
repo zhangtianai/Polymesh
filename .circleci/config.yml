@@ -101,6 +101,10 @@ jobs:
           name: cli node instances
           command: ./scripts/cli/run.sh
       - run:
+          name: watch polymesh node logs
+          command: ./scripts/cli/node_modules/.bin/pm2 logs
+          background: true
+      - run:
           name: cli scripts test
           command: npm test
           working_directory: ./scripts/cli
