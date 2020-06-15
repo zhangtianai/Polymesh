@@ -76,8 +76,14 @@ pub enum LegStatus {
     ExecutionPending,
     ExecutionSuccessful,
     ExecutionFailed,
-    /// receipt used
-    ExecutionSkipped,
+    /// receipt used, (receipt signer, receipt uid)
+    ExecutionSkipped(AccountId, u64),
+}
+
+impl Default for LegStatus {
+    fn default() -> Self {
+        Self::ExecutionPending
+    }
 }
 
 #[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -119,7 +125,6 @@ pub struct Leg<T> {
     to: Option<IdentityId>,
     asset: Ticker,
     amount: T,
-    status: LegStatus,
 }
 
 impl<T> Leg<T> {
@@ -130,7 +135,6 @@ impl<T> Leg<T> {
             to: leg.to,
             asset: leg.asset,
             amount: leg.amount,
-            status: LegStatus::ExecutionPending,
         }
     }
 }
@@ -167,9 +171,9 @@ decl_event!(
     where
         Balance = <T as CommonTrait>::Balance,
     {
-        /// Disbursement to a target Identity.
-        /// (target identity, amount)
-        TreasuryDisbursement(IdentityId, IdentityId, Balance),
+        /// Something happened
+        Something(Balance),
+        // TODO: Add events
     }
 );
 
@@ -183,7 +187,15 @@ decl_error! {
         /// No pending authorization for the provided instruction
         NoPendingAuth,
         /// Instruction has not been authorized
-        InstructionNotAuthorized
+        InstructionNotAuthorized,
+        /// Provided leg is not pending execution
+        LegNotPending,
+        /// Signer is not authorized by the venue
+        UnauthorizedSigner,
+        /// Receipt already used
+        ReceiptAlreadyClaimed,
+        /// Receipt not used yet
+        ReceiptNotClaimed
 
     }
 }
@@ -198,13 +210,15 @@ decl_storage! {
 
         InstructionLegs get(fn instruction_legs): map hasher(twox_64_concat) u64 => Vec<Leg<T::Balance>>;
 
+        InstructionLegStatus get(fn instruction_leg_status): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) u64 => LegStatus;
+
         InstructionAuthsPending get(fn instruction_auths_pending): map hasher(twox_64_concat) u64 => u64;
 
         AuthsReceived get(fn auths_received): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) IdentityId => AuthorizationStatus;
 
         UserAuths get(fn user_auths): double_map hasher(twox_64_concat) IdentityId, hasher(twox_64_concat) u64 => AuthorizationStatus;
 
-        ReceiptsUsed get(fn receipts_used): double_map hasher(twox_64_concat) AccountId, hasher(blake2_128_concat) Receipt<T::Balance> => bool;
+        ReceiptsUsed get(fn receipts_used): double_map hasher(twox_64_concat) AccountId, hasher(blake2_128_concat) u64 => bool;
 
         VenueFiltering get(fn venue_filtering): map hasher(blake2_128_concat) Ticker => bool;
 
@@ -319,7 +333,7 @@ decl_module! {
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
 
             // checks if instruction exists and sender is a counter party with a pending authorization
-            ensure!(Self::user_auths(did, instruction_id,) == AuthorizationStatus::Authorized, Error::<T>::InstructionNotAuthorized);
+            ensure!(Self::user_auths(did, instruction_id) == AuthorizationStatus::Authorized, Error::<T>::InstructionNotAuthorized);
 
             // Updates storage
             <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Pending);
@@ -327,6 +341,60 @@ decl_module! {
             <InstructionAuthsPending>::mutate(instruction_id, |auths_pending| *auths_pending - 1);
             Ok(())
         }
+
+        pub fn claim_receipt(origin, instruction_id: u64, receipt_leg_number: u64, receipt_uid: u64, signer: AccountId /*signed_data*/) -> DispatchResult {
+            let sender = ensure_signed(origin)?;
+            let sender_key = AccountKey::try_from(sender.encode())?;
+            let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
+
+            // checks if instruction exists and sender is a counter party
+            let user_auth = Self::user_auths(did, instruction_id);
+            ensure!(
+                user_auth == AuthorizationStatus::Authorized || user_auth == AuthorizationStatus::Pending,
+                Error::<T>::InstructionNotAuthorized
+            );
+            ensure!(
+                Self::instruction_leg_status(instruction_id, receipt_leg_number) == LegStatus::ExecutionPending,
+                Error::<T>::LegNotPending
+            );
+            let venue_id = Self::instruction_details(instruction_id).venue_id;
+            ensure!(
+                Self::venue_signers(venue_id, &signer), Error::<T>::UnauthorizedSigner
+            );
+            ensure!(
+                !Self::receipts_used(&signer, receipt_uid), Error::<T>::ReceiptAlreadyClaimed
+            );
+
+            //TODO verify signed data
+
+            <ReceiptsUsed>::insert(&signer, receipt_uid, true);
+
+            <InstructionLegStatus>::insert(instruction_id, receipt_leg_number, LegStatus::ExecutionSkipped(signer, receipt_uid));
+
+            Ok(())
+        }
+
+        pub fn unclaim_receipt(origin, instruction_id: u64, receipt_leg_number: u64) -> DispatchResult {
+            let sender = ensure_signed(origin)?;
+            let sender_key = AccountKey::try_from(sender.encode())?;
+            let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
+
+            // checks if instruction exists and sender is a counter party
+            let user_auth = Self::user_auths(did, instruction_id);
+            ensure!(
+                user_auth == AuthorizationStatus::Authorized || user_auth == AuthorizationStatus::Pending,
+                Error::<T>::InstructionNotAuthorized
+            );
+
+            if let LegStatus::ExecutionSkipped(signer, receipt_uid) = Self::instruction_leg_status(instruction_id, receipt_leg_number) {
+                <ReceiptsUsed>::insert(signer, receipt_uid, false);
+                <InstructionLegStatus>::insert(instruction_id, receipt_leg_number, LegStatus::ExecutionPending);
+                Ok(())
+            } else {
+                Err(Error::<T>::ReceiptNotClaimed.into())
+            }
+        }
+
 
     }
 }
