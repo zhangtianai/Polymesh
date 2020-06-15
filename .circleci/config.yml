@@ -93,14 +93,13 @@ jobs:
           command: cargo build --release || cargo build -j 1 --release
           no_output_timeout: 4h
       - run:
-          name: cli node instance
-          command: ./target/release/polymesh --dev --pool-limit 100000 -d /tmp/pmesh-primary-node
-          background: true
-      - run:
           name: cli scripts install
           command: npm install
           working_directory: ./scripts/cli
           no_output_timeout: 30m
+      - run:
+          name: cli node instances
+          command: ./scripts/cli/run.sh
       - run:
           name: cli scripts test
           command: npm test
