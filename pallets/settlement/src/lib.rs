@@ -102,7 +102,6 @@ pub struct Instruction<T> {
     expiry: Option<T>,
     created_at: Option<T>,
     valid_from: Option<T>,
-    auths_pending: u64,
 }
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
@@ -180,7 +179,12 @@ decl_error! {
         /// Venue does not exist
         InvalidVenue,
         /// Sender does not have required permissions
-        Unauthorized
+        Unauthorized,
+        /// No pending authorization for the provided instruction
+        NoPendingAuth,
+        /// Instruction has not been authorized
+        InstructionNotAuthorized
+
     }
 }
 
@@ -193,6 +197,8 @@ decl_storage! {
         InstructionDetails get(fn instruction_details): map hasher(twox_64_concat) u64 => Instruction<T::Moment>;
 
         InstructionLegs get(fn instruction_legs): map hasher(twox_64_concat) u64 => Vec<Leg<T::Balance>>;
+
+        InstructionAuthsPending get(fn instruction_auths_pending): map hasher(twox_64_concat) u64 => u64;
 
         AuthsReceived get(fn auths_received): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) IdentityId => AuthorizationStatus;
 
@@ -268,19 +274,22 @@ decl_module! {
                 status: InstructionStatus::PendingOrExpired,
                 expiry: expiry,
                 created_at: Some(<pallet_timestamp::Module<T>>::get()),
-                valid_from: Some(valid_from),
-                auths_pending: u64::try_from(counter_parties.len()).unwrap_or_default(),
+                valid_from: Some(valid_from)
             };
 
             // write data to storage
-            for counter_party in counter_parties {
+            for counter_party in &counter_parties {
                 <UserAuths>::insert(counter_party, instruction_counter, AuthorizationStatus::Pending);
             }
+            // TODO:
+            // Collect, sort and dedup assets just like counter parties above and then
+            // loop over them to check if the venue is authorized by the asset owner
+
             <InstructionLegs<T>>::insert(instruction_counter, legs);
             <InstructionDetails<T>>::insert(instruction_counter, instruction);
+            <InstructionAuthsPending>::insert(instruction_counter, u64::try_from(counter_parties.len()).unwrap_or_default());
             <VenueInfo>::insert(venue_id, venue);
             <InstructionCounter>::put(instruction_counter + 1);
-
             Ok(())
         }
 
@@ -289,6 +298,33 @@ decl_module! {
             let sender_key = AccountKey::try_from(sender.encode())?;
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
 
+            // checks if instruction exists and sender is a counter party with a pending authorization
+            ensure!(Self::user_auths(did, instruction_id) == AuthorizationStatus::Pending, Error::<T>::NoPendingAuth);
+
+            let auths_pending = Self::instruction_auths_pending(instruction_id);
+            if auths_pending <= 1 {
+                // TODO: execute instruction
+            }
+
+            // Updates storage
+            <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Authorized);
+            <AuthsReceived>::insert(instruction_id, did, AuthorizationStatus::Authorized);
+            <InstructionAuthsPending>::insert(instruction_id, auths_pending - 1);
+            Ok(())
+        }
+
+        pub fn unauthorize_instruction(origin, instruction_id: u64) -> DispatchResult {
+            let sender = ensure_signed(origin)?;
+            let sender_key = AccountKey::try_from(sender.encode())?;
+            let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
+
+            // checks if instruction exists and sender is a counter party with a pending authorization
+            ensure!(Self::user_auths(did, instruction_id,) == AuthorizationStatus::Authorized, Error::<T>::InstructionNotAuthorized);
+
+            // Updates storage
+            <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Pending);
+            <AuthsReceived>::remove(instruction_id, did);
+            <InstructionAuthsPending>::mutate(instruction_id, |auths_pending| *auths_pending - 1);
             Ok(())
         }
 
