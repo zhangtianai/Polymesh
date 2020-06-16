@@ -46,7 +46,9 @@ use sp_std::{convert::TryFrom, prelude::*};
 
 type Identity<T> = identity::Module<T>;
 
-pub trait Trait: frame_system::Trait + CommonTrait + IdentityTrait {
+pub trait Trait:
+    frame_system::Trait + CommonTrait + IdentityTrait + pallet_timestamp::Trait
+{
     // The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
     /// Asset module
@@ -97,7 +99,7 @@ impl Default for AuthorizationStatus {
     }
 }
 
-#[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Encode, Decode, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SettlementType<T> {
     SettleOnAuthorization,
     SettleOnDate(T),
@@ -179,10 +181,34 @@ decl_event!(
     pub enum Event<T>
     where
         Balance = <T as CommonTrait>::Balance,
+        Moment = <T as pallet_timestamp::Trait>::Moment,
     {
-        /// Something happened
-        Something(Balance),
-        // TODO: Add events
+        /// A new venue has been created (did, venue_id)
+        VenueCreated(IdentityId, u64),
+        /// A new instruction has been created
+        /// (did, venue_id, instruction_id, settlement_type, valid_from, leg_details)
+        InstructionCreated(
+            IdentityId,
+            u64,
+            u64,
+            SettlementType<Moment>,
+            Option<Moment>,
+            Vec<LegDetails<Balance>>,
+        ),
+        /// An instruction has been authorized (did, instruction_id)
+        InstructionAuthorized(IdentityId, u64),
+        /// An instruction has been unauthorized (did, instruction_id)
+        InstructionUnauthorized(IdentityId, u64),
+        /// A receipt has been claimed (did, instruction_id, leg_number, receipt_uid, signer)
+        ReceiptClaimed(IdentityId, u64, u64, u64, AccountId),
+        /// A receipt has been unclaimed (did, instruction_id, leg_number, receipt_uid, signer)
+        ReceiptUnclaimed(IdentityId, u64, u64, u64, AccountId),
+        /// Venue filtering has been enabled or disabled for a ticker (did, ticker, filtering_enabled)
+        VenueFiltering(IdentityId, Ticker, bool),
+        /// Venues added to allow list (did, ticker, vec<venue_id>)
+        VenuesAllowed(IdentityId, Ticker, Vec<u64>),
+        /// Venues added to block list (did, ticker, vec<venue_id>)
+        VenuesBlocked(IdentityId, Ticker, Vec<u64>),
     }
 );
 
@@ -257,6 +283,7 @@ decl_module! {
                 <VenueSigners>::insert(venue_counter, signer, true);
             }
             <VenueCounter>::put(venue_counter + 1);
+            Self::deposit_event(RawEvent::VenueCreated(did, venue_counter));
             Ok(())
         }
 
@@ -323,6 +350,7 @@ decl_module! {
             <InstructionAuthsPending>::insert(instruction_counter, u64::try_from(counter_parties.len()).unwrap_or_default());
             <VenueInfo>::insert(venue_id, venue);
             <InstructionCounter>::put(instruction_counter + 1);
+            Self::deposit_event(RawEvent::InstructionCreated(did, venue_id, instruction_counter, settlement_type, valid_from, leg_details));
             Ok(())
         }
 
@@ -343,6 +371,7 @@ decl_module! {
             <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Authorized);
             <AuthsReceived>::insert(instruction_id, did, AuthorizationStatus::Authorized);
             <InstructionAuthsPending>::insert(instruction_id, auths_pending - 1);
+            Self::deposit_event(RawEvent::InstructionAuthorized(did, instruction_id));
             Ok(())
         }
 
@@ -358,10 +387,11 @@ decl_module! {
             <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Pending);
             <AuthsReceived>::remove(instruction_id, did);
             <InstructionAuthsPending>::mutate(instruction_id, |auths_pending| *auths_pending - 1);
+            Self::deposit_event(RawEvent::InstructionUnauthorized(did, instruction_id));
             Ok(())
         }
 
-        pub fn claim_receipt(origin, instruction_id: u64, receipt_leg_number: u64, receipt_uid: u64, signer: AccountId /*signed_data*/) -> DispatchResult {
+        pub fn claim_receipt(origin, instruction_id: u64, leg_number: u64, receipt_uid: u64, signer: AccountId /*signed_data*/) -> DispatchResult {
             let sender = ensure_signed(origin)?;
             let sender_key = AccountKey::try_from(sender.encode())?;
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
@@ -373,7 +403,7 @@ decl_module! {
                 Error::<T>::InstructionNotAuthorized
             );
             ensure!(
-                Self::instruction_leg_status(instruction_id, receipt_leg_number) == LegStatus::ExecutionPending,
+                Self::instruction_leg_status(instruction_id, leg_number) == LegStatus::ExecutionPending,
                 Error::<T>::LegNotPending
             );
             let venue_id = Self::instruction_details(instruction_id).venue_id;
@@ -388,12 +418,12 @@ decl_module! {
 
             <ReceiptsUsed>::insert(&signer, receipt_uid, true);
 
-            <InstructionLegStatus>::insert(instruction_id, receipt_leg_number, LegStatus::ExecutionSkipped(signer, receipt_uid));
-
+            <InstructionLegStatus>::insert(instruction_id, leg_number, LegStatus::ExecutionSkipped(signer.clone(), receipt_uid));
+            Self::deposit_event(RawEvent::ReceiptClaimed(did, instruction_id, leg_number, receipt_uid, signer));
             Ok(())
         }
 
-        pub fn unclaim_receipt(origin, instruction_id: u64, receipt_leg_number: u64) -> DispatchResult {
+        pub fn unclaim_receipt(origin, instruction_id: u64, leg_number: u64) -> DispatchResult {
             let sender = ensure_signed(origin)?;
             let sender_key = AccountKey::try_from(sender.encode())?;
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
@@ -405,9 +435,10 @@ decl_module! {
                 Error::<T>::InstructionNotAuthorized
             );
 
-            if let LegStatus::ExecutionSkipped(signer, receipt_uid) = Self::instruction_leg_status(instruction_id, receipt_leg_number) {
-                <ReceiptsUsed>::insert(signer, receipt_uid, false);
-                <InstructionLegStatus>::insert(instruction_id, receipt_leg_number, LegStatus::ExecutionPending);
+            if let LegStatus::ExecutionSkipped(signer, receipt_uid) = Self::instruction_leg_status(instruction_id, leg_number) {
+                <ReceiptsUsed>::insert(&signer, receipt_uid, false);
+                <InstructionLegStatus>::insert(instruction_id, leg_number, LegStatus::ExecutionPending);
+                Self::deposit_event(RawEvent::ReceiptClaimed(did, instruction_id, leg_number, receipt_uid, signer));
                 Ok(())
             } else {
                 Err(Error::<T>::ReceiptNotClaimed.into())
@@ -420,6 +451,7 @@ decl_module! {
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
             ensure!(Self::is_owner(&ticker, did), Error::<T>::Unauthorized);
             <VenueFiltering>::insert(ticker, enabled);
+            Self::deposit_event(RawEvent::VenueFiltering(did, ticker, enabled));
             Ok(())
         }
 
@@ -428,9 +460,10 @@ decl_module! {
             let sender_key = AccountKey::try_from(sender.encode())?;
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
             ensure!(Self::is_owner(&ticker, did), Error::<T>::Unauthorized);
-            for venue in venues {
+            for venue in &venues {
                 <VenueAllowList>::insert(&ticker, venue, true);
             }
+            Self::deposit_event(RawEvent::VenuesAllowed(did, ticker, venues));
             Ok(())
         }
 
@@ -439,9 +472,10 @@ decl_module! {
             let sender_key = AccountKey::try_from(sender.encode())?;
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
             ensure!(Self::is_owner(&ticker, did), Error::<T>::Unauthorized);
-            for venue in venues {
+            for venue in &venues {
                 <VenueAllowList>::insert(&ticker, venue, false);
             }
+            Self::deposit_event(RawEvent::VenuesBlocked(did, ticker, venues));
             Ok(())
         }
     }
