@@ -125,7 +125,7 @@ use frame_support::{
 use frame_system::{self as system, ensure_signed};
 use hex_literal::hex;
 use pallet_contracts::{ExecReturnValue, Gas};
-use sp_runtime::traits::{CheckedAdd, CheckedSub, Verify};
+use sp_runtime::traits::{CheckedAdd, CheckedSub, Saturating, Verify};
 
 #[cfg(feature = "std")]
 use sp_runtime::{Deserialize, Serialize};
@@ -1576,6 +1576,38 @@ impl<T: Trait> AssetTrait<T::Balance, T::AccountId> for Module<T> {
     fn get_balance_at(ticker: &Ticker, did: IdentityId, at: u64) -> T::Balance {
         Self::get_balance_at(*ticker, did, at)
     }
+
+    fn unsafe_increase_custody_allowance(
+        caller_did: IdentityId,
+        ticker: Ticker,
+        holder_did: IdentityId,
+        custodian_did: IdentityId,
+        value: T::Balance,
+    ) -> DispatchResult {
+        Self::unsafe_increase_custody_allowance(
+            caller_did,
+            ticker,
+            holder_did,
+            custodian_did,
+            value,
+        )
+    }
+
+    fn unsafe_decrease_custody_allowance(
+        caller_did: IdentityId,
+        ticker: Ticker,
+        holder_did: IdentityId,
+        custodian_did: IdentityId,
+        value: T::Balance,
+    ) {
+        Self::unsafe_decrease_custody_allowance(
+            caller_did,
+            ticker,
+            holder_did,
+            custodian_did,
+            value,
+        )
+    }
 }
 
 impl<T: Trait> AcceptTransfer for Module<T> {
@@ -2030,6 +2062,35 @@ impl<T: Trait> Module<T> {
             new_current_allowance,
         ));
         Ok(())
+    }
+
+    fn unsafe_decrease_custody_allowance(
+        caller_did: IdentityId,
+        ticker: Ticker,
+        holder_did: IdentityId,
+        custodian_did: IdentityId,
+        value: T::Balance,
+    ) {
+        let new_custody_allowance =
+            Self::total_custody_allowance((ticker, holder_did)).saturating_sub(value);
+
+        let old_allowance = Self::custodian_allowance((ticker, holder_did, custodian_did));
+        let new_current_allowance = old_allowance.saturating_sub(value);
+
+        // Update Storage
+        <CustodianAllowance<T>>::insert(
+            (ticker, holder_did, custodian_did),
+            &new_current_allowance,
+        );
+        <TotalCustodyAllowance<T>>::insert((ticker, holder_did), new_custody_allowance);
+        Self::deposit_event(RawEvent::CustodyAllowanceChanged(
+            caller_did,
+            ticker,
+            holder_did,
+            custodian_did,
+            old_allowance,
+            new_current_allowance,
+        ));
     }
 
     /// Accept and process a ticker transfer.

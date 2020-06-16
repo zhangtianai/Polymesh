@@ -33,6 +33,7 @@ use polymesh_common_utilities::{
     constants::SETTLEMENT_MODULE_ID,
     traits::{asset::Trait as AssetTrait, identity::Trait as IdentityTrait, CommonTrait},
     Context,
+    SystematicIssuers::Settlement as SettlementDID,
 };
 use polymesh_primitives::{AccountId, AccountKey, IdentityId, Ticker};
 
@@ -124,8 +125,8 @@ pub struct Instruction<T> {
 
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct LegDetails<T> {
-    from: Option<IdentityId>,
-    to: Option<IdentityId>,
+    from: IdentityId,
+    to: IdentityId,
     asset: Ticker,
     amount: T,
 }
@@ -133,8 +134,8 @@ pub struct LegDetails<T> {
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Leg<T> {
     leg_id: u64,
-    from: Option<IdentityId>,
-    to: Option<IdentityId>,
+    from: IdentityId,
+    to: IdentityId,
     asset: Ticker,
     amount: T,
 }
@@ -310,12 +311,8 @@ decl_module! {
             let mut counter_parties = Vec::with_capacity(leg_details.len() * 2);
             let mut tickers = Vec::with_capacity(leg_details.len());
             for i in 0..leg_details.len() {
-                if let Some(from) = leg_details[i].from {
-                    counter_parties.push(from);
-                }
-                if let Some(to) = leg_details[i].to {
-                    counter_parties.push(to);
-                }
+                counter_parties.push(leg_details[i].from);
+                counter_parties.push(leg_details[i].to);
                 tickers.push(leg_details[i].asset);
                 legs.push(Leg::new(u64::try_from(i).unwrap_or_default(), leg_details[i].clone()));
             }
@@ -363,11 +360,34 @@ decl_module! {
             // checks if instruction exists and sender is a counter party with a pending authorization
             ensure!(Self::user_auths(did, instruction_id) == AuthorizationStatus::Pending, Error::<T>::NoPendingAuth);
 
+            let legs = Self::instruction_legs(instruction_id);
+            for i in 0..legs.len() {
+                if legs[i].from == did {
+                    if T::Asset::unsafe_increase_custody_allowance(
+                        did,
+                        legs[i].asset,
+                        did,
+                        SettlementDID.as_id(),
+                        legs[i].amount
+                    ).is_err() {
+                        // Undo custody locks
+                        for j in 0..i {
+                            T::Asset::unsafe_decrease_custody_allowance(did,
+                                legs[j].asset,
+                                did,
+                                SettlementDID.as_id(),
+                                legs[j].amount
+                            );
+                        }
+                        break;
+                    }
+                }
+            }
+
             let auths_pending = Self::instruction_auths_pending(instruction_id);
             if auths_pending <= 1 {
                 // TODO: execute instruction
             }
-            // TODO: take ownership of assets authorized
             // Updates storage
             <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Authorized);
             <AuthsReceived>::insert(instruction_id, did, AuthorizationStatus::Authorized);
