@@ -2710,6 +2710,41 @@ dependencies = [
 ]
 
 [[package]]
+name = "node-rpc"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "jsonrpc-core",
+ "jsonrpc-core-client",
+ "jsonrpc-derive",
+ "node-rpc-runtime-api",
+ "pallet-pips",
+ "parity-scale-codec",
+ "polymesh-primitives",
+ "serde",
+ "sp-api",
+ "sp-blockchain",
+ "sp-rpc",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
+name = "node-rpc-runtime-api"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "pallet-pips",
+ "parity-scale-codec",
+ "polymesh-primitives",
+ "serde",
+ "serde_json",
+ "sp-api",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "nodrop"
 version = "0.1.14"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2848,7 +2883,6 @@ dependencies = [
  "frame-support",
  "frame-system",
  "hex-literal",
- "pallet-asset-rpc-runtime-api",
  "pallet-balances 0.1.0",
  "pallet-contracts",
  "pallet-identity",
@@ -2871,47 +2905,6 @@ dependencies = [
  "sp-std",
  "sp-version",
  "substrate-test-runtime-client",
-]
-
-[[package]]
-name = "pallet-asset-rpc"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "jsonrpc-core",
- "jsonrpc-core-client",
- "jsonrpc-derive",
- "pallet-asset-rpc-runtime-api",
- "pallet-balances 0.1.0",
- "parity-scale-codec",
- "polymesh-common-utilities",
- "polymesh-primitives",
- "serde",
- "serde_derive",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-rpc",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-asset-rpc-runtime-api"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "frame-system",
- "pallet-balances 0.1.0",
- "parity-scale-codec",
- "polymesh-common-utilities",
- "polymesh-primitives",
- "serde",
- "serde_json",
- "sp-api",
- "sp-core",
- "sp-std",
 ]
 
 [[package]]
@@ -3379,6 +3372,7 @@ dependencies = [
  "frame-support",
  "frame-system",
  "pallet-identity",
+ "pallet-timestamp",
  "pallet-transaction-payment",
  "parity-scale-codec",
  "polymesh-common-utilities",
@@ -3414,7 +3408,6 @@ dependencies = [
  "pallet-committee",
  "pallet-group",
  "pallet-identity",
- "pallet-pips-rpc-runtime-api",
  "pallet-protocol-fee",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -3434,37 +3427,6 @@ dependencies = [
  "sp-std",
  "sp-version",
  "substrate-test-runtime-client",
-]
-
-[[package]]
-name = "pallet-pips-rpc"
-version = "2.0.0"
-dependencies = [
- "jsonrpc-core",
- "jsonrpc-core-client",
- "jsonrpc-derive",
- "pallet-pips-rpc-runtime-api",
- "parity-scale-codec",
- "serde",
- "sp-api",
- "sp-blockchain",
- "sp-rpc",
- "sp-runtime",
- "sp-std",
- "substrate-test-runtime-client",
-]
-
-[[package]]
-name = "pallet-pips-rpc-runtime-api"
-version = "2.0.0"
-dependencies = [
- "frame-support",
- "parity-scale-codec",
- "serde",
- "serde_json",
- "sp-api",
- "sp-runtime",
- "sp-std",
 ]
 
 [[package]]
@@ -4084,9 +4046,9 @@ dependencies = [
  "lazy_static",
  "linregress",
  "log",
+ "node-rpc",
+ "node-rpc-runtime-api",
  "pallet-asset",
- "pallet-asset-rpc",
- "pallet-asset-rpc-runtime-api",
  "pallet-compliance-manager-rpc",
  "pallet-compliance-manager-rpc-runtime-api",
  "pallet-contracts",
@@ -4097,8 +4059,6 @@ dependencies = [
  "pallet-identity-rpc",
  "pallet-identity-rpc-runtime-api",
  "pallet-im-online",
- "pallet-pips-rpc",
- "pallet-pips-rpc-runtime-api",
  "pallet-protocol-fee",
  "pallet-protocol-fee-rpc",
  "pallet-protocol-fee-rpc-runtime-api",
@@ -4262,8 +4222,8 @@ dependencies = [
  "ink_primitives",
  "lazy_static",
  "log",
+ "node-rpc-runtime-api",
  "pallet-asset",
- "pallet-asset-rpc-runtime-api",
  "pallet-authority-discovery",
  "pallet-authorship",
  "pallet-babe",
@@ -4286,7 +4246,6 @@ dependencies = [
  "pallet-multisig",
  "pallet-offences",
  "pallet-pips",
- "pallet-pips-rpc-runtime-api",
  "pallet-protocol-fee",
  "pallet-protocol-fee-rpc-runtime-api",
  "pallet-randomness-collective-flip",
@@ -4346,8 +4305,8 @@ dependencies = [
  "ink_primitives",
  "lazy_static",
  "log",
+ "node-rpc-runtime-api",
  "pallet-asset",
- "pallet-asset-rpc-runtime-api",
  "pallet-authority-discovery",
  "pallet-authorship",
  "pallet-babe",
@@ -4369,7 +4328,6 @@ dependencies = [
  "pallet-multisig",
  "pallet-offences",
  "pallet-pips",
- "pallet-pips-rpc-runtime-api",
  "pallet-protocol-fee",
  "pallet-protocol-fee-rpc-runtime-api",
  "pallet-randomness-collective-flip",

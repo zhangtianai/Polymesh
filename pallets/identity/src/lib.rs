@@ -61,10 +61,10 @@
 //! - `join_identity_as_key` - Join an identity as a signing key.
 //! - `join_identity_as_identity` - Join an identity as a signing identity.
 //! - `add_claim` - Adds a new claim record or edits an existing one.
-//! - `add_claims_batch` - Adds a new batch of claim records or edits an existing one.
+//! - `batch_add_claim` - Adds a new batch of claim records or edits an existing one.
 //! - `forwarded_call` - Creates a call on behalf of another DID.
 //! - `revoke_claim` - Marks the specified claim as revoked.
-//! - `revoke_claims_batch` - Revokes multiple claims in a batch.
+//! - `batch_revoke_claim` - Revokes multiple claims in a batch.
 //! - `set_permission_to_signer` - Sets permissions for an specific `target_key` key.
 //! - `freeze_signing_keys` - Disables all signing keys at `did` identity.
 //! - `unfreeze_signing_keys` - Re-enables all signing keys of the caller's identity.
@@ -75,7 +75,7 @@
 //! - `batch_remove_authorization` - Removes an array of authorizations.
 //! - `accept_authorization` - Accepts an authorization.
 //! - `batch_accept_authorization` - Accepts an array of authorizations.
-//! - `add_signing_items_with_authorization` - Adds signing keys to target identity `id`.
+//! - `batch_add_signing_item_with_authorization` - Adds signing keys to target identity `id`.
 //! - `revoke_offchain_authorization` - Revokes the `auth` off-chain authorization of `signer`.
 
 #![cfg_attr(not(feature = "std"), no_std)]
@@ -84,7 +84,7 @@
 #[cfg(feature = "runtime-benchmarks")]
 pub mod benchmarking;
 
-use pallet_identity_rpc_runtime_api::{DidRecords as RpcDidRecords, LinkType};
+use pallet_identity_rpc_runtime_api::{DidRecords as RpcDidRecords, DidStatus, LinkType};
 use pallet_transaction_payment::{CddAndFeeDetails, ChargeTxFee};
 use polymesh_common_utilities::{
     constants::did::{SECURITY_TOKEN, USER},
@@ -96,7 +96,7 @@ use polymesh_common_utilities::{
             AuthorizationNonce, IdentityTrait, LinkedKeyInfo, RawEvent, SigningItemWithAuth,
             TargetIdAuthorization, Trait,
         },
-        multisig::AddSignerMultiSig,
+        multisig::MultiSigSubTrait,
     },
     Context, SystematicIssuers, SYSTEMATIC_ISSUERS,
 };
@@ -125,7 +125,7 @@ use frame_support::{
     debug, decl_error, decl_module, decl_storage,
     dispatch::{DispatchError, DispatchResult},
     ensure,
-    traits::{ChangeMembers, InitializeMembers},
+    traits::{ChangeMembers, Currency, InitializeMembers},
     weights::{DispatchClass, FunctionOf, GetDispatchInfo, SimpleDispatchInfo},
     StorageDoubleMap,
 };
@@ -355,9 +355,17 @@ decl_module! {
             let did_sig = Signatory::from(did);
 
             // Remove links and get all authorization IDs per signer.
-            let signer_and_auth_id_list = signers_to_remove.iter().map(|signer| {
+            let signer_and_auth_id_list = signers_to_remove.iter().filter_map(|signer| {
                 match signer {
-                    Signatory::AccountKey(ref key) => Self::unlink_key_from_did(key, did),
+                    Signatory::AccountKey(ref key) => {
+                        if T::MultiSig::is_multisig(*key) {
+                            let multisig = T::AccountId::decode(&mut &key.as_slice()[..]).unwrap_or_default();
+                            if !T::Balances::total_balance(&multisig).is_zero() { return None; }
+                            // Unlink multisig signers from the identity.
+                            Self::unlink_multisig_signers_from_did(T::MultiSig::get_key_signers(*key), did);
+                        }
+                        Self::unlink_key_from_did(key, did)
+                    }
                     _ => {}
                 };
 
@@ -372,7 +380,7 @@ decl_module! {
                     })
                     .collect::<Vec<_>>();
 
-                (signer, auth_ids)
+                Some((signer, auth_ids))
             })
             .collect::<Vec<_>>();
 
@@ -519,7 +527,7 @@ decl_module! {
             DispatchClass::Normal,
             true
         )]
-        pub fn add_claims_batch(
+        pub fn batch_add_claim(
             origin,
             claims: Vec<BatchAddClaimItem<T::Moment>>
         ) -> DispatchResult {
@@ -542,7 +550,7 @@ decl_module! {
                 ensure!(cdd_providers.contains(&issuer), Error::<T>::UnAuthorizedCddProvider);
             }
 
-            T::ProtocolFee::charge_fee_batch(
+            T::ProtocolFee::batch_charge_fee(
                 &Signatory::AccountKey(sender_key),
                 ProtocolOp::IdentityAddClaim,
                 claims.len() - cdd_count
@@ -628,7 +636,8 @@ decl_module! {
             DispatchClass::Normal,
             true
         )]
-        pub fn revoke_claims_batch(origin,
+        pub fn batch_revoke_claim(
+            origin,
             claims: Vec<BatchRevokeClaimItem>
         ) -> DispatchResult {
             let sender_key = AccountKey::try_from( ensure_signed(origin)?.encode())?;
@@ -869,7 +878,7 @@ decl_module! {
                         AuthorizationData::TransferAssetOwnership(_) =>
                             T::AcceptTransferTarget::accept_asset_ownership_transfer(did, auth_id),
                         AuthorizationData::AddMultiSigSigner =>
-                            T::AddSignerMultiSigTarget::accept_multisig_signer(Signatory::from(did), auth_id),
+                            T::MultiSig::accept_multisig_signer(Signatory::from(did), auth_id),
                         AuthorizationData::JoinIdentity(_) =>
                             Self::join_identity(Signatory::from(did), auth_id),
                         _ => Err(Error::<T>::UnknownAuthorization.into())
@@ -878,7 +887,7 @@ decl_module! {
                 Signatory::AccountKey(key) => {
                     match auth.authorization_data {
                         AuthorizationData::AddMultiSigSigner =>
-                            T::AddSignerMultiSigTarget::accept_multisig_signer(Signatory::from(key), auth_id),
+                            T::MultiSig::accept_multisig_signer(Signatory::from(key), auth_id),
                         AuthorizationData::RotateMasterKey(_identityid) =>
                             Self::accept_master_key_rotation(key , auth_id, None),
                         AuthorizationData::JoinIdentity(_) =>
@@ -890,6 +899,8 @@ decl_module! {
         }
 
         /// Accepts an array of authorizations.
+        /// NB: Even if an auth is invalid (due to any reason), this batch function does NOT return an error.
+        /// It will just skip that particular authorization.
         ///
         /// # Weight
         /// `100_000 + 500_000 * auth_ids.len()`
@@ -913,8 +924,6 @@ decl_module! {
             match signer {
                 Signatory::Identity(did) => {
                     for auth_id in auth_ids {
-                        // NB: Even if an auth is invalid (due to any reason), this batch function does NOT return an error.
-                        // It will just skip that particular authorization.
 
                         if <Authorizations<T>>::contains_key(signer, auth_id) {
                             let auth = <Authorizations<T>>::get(signer, auth_id);
@@ -926,7 +935,7 @@ decl_module! {
                                 AuthorizationData::TransferAssetOwnership(_) =>
                                     T::AcceptTransferTarget::accept_asset_ownership_transfer(did, auth_id),
                                 AuthorizationData::AddMultiSigSigner =>
-                                    T::AddSignerMultiSigTarget::accept_multisig_signer(Signatory::from(did), auth_id),
+                                    T::MultiSig::accept_multisig_signer(Signatory::from(did), auth_id),
                                 AuthorizationData::JoinIdentity(_) =>
                                     Self::join_identity(Signatory::from(did), auth_id),
                                 _ => Err(Error::<T>::UnknownAuthorization.into())
@@ -936,8 +945,6 @@ decl_module! {
                 },
                 Signatory::AccountKey(key) => {
                     for auth_id in auth_ids {
-                        // NB: Even if an auth is invalid (due to any reason), this batch function does NOT return an error.
-                        // It will just skip that particular authorization.
 
                         if <Authorizations<T>>::contains_key(signer, auth_id) {
                             let auth = <Authorizations<T>>::get(signer, auth_id);
@@ -945,7 +952,7 @@ decl_module! {
                             //NB: Result is not handled, invalid auths are just ignored to let the batch function continue.
                             let _result = match auth.authorization_data {
                                 AuthorizationData::AddMultiSigSigner =>
-                                    T::AddSignerMultiSigTarget::accept_multisig_signer(Signatory::from(key), auth_id),
+                                    T::MultiSig::accept_multisig_signer(Signatory::from(key), auth_id),
                                 AuthorizationData::RotateMasterKey(_identityid) =>
                                     Self::accept_master_key_rotation(key , auth_id, None),
                                 AuthorizationData::JoinIdentity(_) =>
@@ -976,16 +983,16 @@ decl_module! {
         /// # Weight
         /// `400_000 + 200_000 * auths.len()`
         #[weight = FunctionOf(
-            |(_, additional_keys): (&T::Moment, &Vec<SigningItemWithAuth>)| {
+            |(additional_keys, _): (&Vec<SigningItemWithAuth>, &T::Moment)| {
                 400_000 + 200_000 * u32::try_from(additional_keys.len()).unwrap_or_default()
             },
             DispatchClass::Normal,
             true
         )]
-        pub fn add_signing_items_with_authorization(
+        pub fn batch_add_signing_item_with_authorization(
             origin,
-            expires_at: T::Moment,
-            additional_keys: Vec<SigningItemWithAuth>
+            additional_keys: Vec<SigningItemWithAuth>,
+            expires_at: T::Moment
         ) -> DispatchResult {
             let sender = ensure_signed(origin)?;
             let sender_key = AccountKey::try_from(sender.encode())?;
@@ -1041,7 +1048,7 @@ decl_module! {
                 }
             }
             // 1.999. Charge the fee.
-            T::ProtocolFee::charge_fee_batch(
+            T::ProtocolFee::batch_charge_fee(
                 &Signatory::AccountKey(sender_key),
                 ProtocolOp::IdentityAddSigningItemsWithAuthorization,
                 additional_keys.len()
@@ -1153,6 +1160,10 @@ decl_error! {
         FailedToChargeFee,
         /// Signer is not a signing key of the provided identity
         NotASigner,
+        /// Decoding error. Should never happen in practice
+        DecodingError,
+        /// Multisig can not be unlinked from an identity while it still holds POLYX
+        MultiSigHasBalance
     }
 }
 
@@ -2011,6 +2022,16 @@ impl<T: Trait> Module<T> {
         ensure!(Self::is_signer(did, &signer), Error::<T>::NotASigner);
 
         if let Signatory::AccountKey(key) = signer {
+            if T::MultiSig::is_multisig(key) {
+                let multisig = T::AccountId::decode(&mut &key.as_slice()[..])
+                    .map_err(|_| Error::<T>::DecodingError)?;
+                ensure!(
+                    T::Balances::total_balance(&multisig).is_zero(),
+                    Error::<T>::MultiSigHasBalance
+                );
+                // Unlink multisig signers from the identity.
+                Self::unlink_multisig_signers_from_did(T::MultiSig::get_key_signers(key), did);
+            }
             Self::unlink_key_from_did(&key, did)
         }
 
@@ -2021,6 +2042,12 @@ impl<T: Trait> Module<T> {
 
         Self::deposit_event(RawEvent::SignerLeft(did, signer));
         Ok(())
+    }
+
+    fn unlink_multisig_signers_from_did(signers: Vec<AccountKey>, did: IdentityId) {
+        for signer in signers {
+            Self::unlink_key_from_did(&signer, did)
+        }
     }
 }
 
@@ -2096,6 +2123,23 @@ impl<T: Trait> Module<T> {
         }
     }
 
+    pub fn get_did_status(dids: Vec<IdentityId>) -> Vec<DidStatus> {
+        let mut result = Vec::with_capacity(dids.len());
+        dids.into_iter().for_each(|did| {
+            // is DID exist in the ecosystem
+            if !<DidRecords>::contains_key(did) {
+                result.push(DidStatus::Unknown);
+            }
+            // DID exist but whether it has valid cdd or not
+            else if Self::fetch_cdd(did, T::Moment::zero()).is_some() {
+                result.push(DidStatus::CddVerified);
+            } else {
+                result.push(DidStatus::Exists);
+            }
+        });
+        result
+    }
+
     /// Registers the systematic issuer with its DID.
     fn register_systematic_id(issuer: SystematicIssuers)
     where
@@ -2124,6 +2168,49 @@ impl<T: Trait> Module<T> {
         <DidRecords>::insert(&id, record);
 
         Self::deposit_event(RawEvent::DidCreated(id, acc, vec![]));
+    }
+
+    /// It returns the list of flatten identities of the given identity.
+    /// It runs recursively over all signing items.
+    pub fn flatten_identities(id: IdentityId, max_depth: u8) -> Vec<IdentityId> {
+        if <DidRecords>::contains_key(id) {
+            let identity = <DidRecords>::get(id);
+
+            identity
+                .signing_items
+                .into_iter()
+                .flat_map(|si| match si.signer {
+                    Signatory::Identity(sub_id) if max_depth > 0 => {
+                        Self::flatten_identities(sub_id, max_depth - 1)
+                    }
+                    _ => vec![],
+                })
+                .chain([id].iter().cloned())
+                .collect::<Vec<_>>()
+        } else {
+            vec![]
+        }
+    }
+
+    /// Get the list of flatten keys fo the given identity.
+    /// It runs recursively over all signing items.
+    pub fn flatten_keys(id: IdentityId, max_depth: u8) -> Vec<AccountKey> {
+        let sub_identities = Self::flatten_identities(id, max_depth);
+        sub_identities
+            .into_iter()
+            .flat_map(|sub_id| {
+                let identity = <DidRecords>::get(sub_id);
+                identity
+                    .signing_items
+                    .iter()
+                    .filter_map(|si| match si.signer {
+                        Signatory::AccountKey(key) => Some(key),
+                        _ => None,
+                    })
+                    .chain([identity.master_key].iter().cloned())
+                    .collect::<Vec<_>>()
+            })
+            .collect::<Vec<_>>()
     }
 }
 
