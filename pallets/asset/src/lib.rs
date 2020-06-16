@@ -1158,7 +1158,7 @@ decl_module! {
         pub fn increase_custody_allowance(origin, ticker: Ticker, custodian_did: IdentityId, value: T::Balance) -> DispatchResult {
             let sender_key = AccountKey::try_from((ensure_signed(origin)?).encode())?;
             let sender_did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
-            Self::_increase_custody_allowance(sender_did, ticker, sender_did, custodian_did, value)?;
+            Self::unsafe_increase_custody_allowance(sender_did, ticker, sender_did, custodian_did, value)?;
             Ok(())
         }
 
@@ -1210,7 +1210,7 @@ decl_module! {
                 <identity::Module<T>>::is_signer_authorized(holder_did, &holder_signer),
                 Error::<T>::HolderMustBeSigningKeyForHolderDid
             );
-            Self::_increase_custody_allowance(caller_did, ticker, holder_did, custodian_did, value)?;
+            Self::unsafe_increase_custody_allowance(caller_did, ticker, holder_did, custodian_did, value)?;
             <AuthenticationNonce>::insert((ticker, holder_did, nonce), true);
             Ok(())
         }
@@ -1990,7 +1990,7 @@ impl<T: Trait> Module<T> {
         Ok(())
     }
 
-    fn _increase_custody_allowance(
+    fn unsafe_increase_custody_allowance(
         caller_did: IdentityId,
         ticker: Ticker,
         holder_did: IdentityId,

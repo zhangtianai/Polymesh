@@ -55,6 +55,7 @@ pub trait Trait:
     type Asset: AssetTrait<Self::Balance, Self::AccountId>;
 }
 
+// TODO: add comments and tests
 #[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InstructionStatus {
     Unknown,
@@ -366,7 +367,7 @@ decl_module! {
             if auths_pending <= 1 {
                 // TODO: execute instruction
             }
-
+            // TODO: take ownership of assets authorized
             // Updates storage
             <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Authorized);
             <AuthsReceived>::insert(instruction_id, did, AuthorizationStatus::Authorized);
@@ -415,6 +416,7 @@ decl_module! {
             );
 
             //TODO verify signed data
+            //TODO unlock locked tokens (if any)
 
             <ReceiptsUsed>::insert(&signer, receipt_uid, true);
 
@@ -436,6 +438,7 @@ decl_module! {
             );
 
             if let LegStatus::ExecutionSkipped(signer, receipt_uid) = Self::instruction_leg_status(instruction_id, leg_number) {
+                //TODO unlock locked tokens (if any)
                 <ReceiptsUsed>::insert(&signer, receipt_uid, false);
                 <InstructionLegStatus>::insert(instruction_id, leg_number, LegStatus::ExecutionPending);
                 Self::deposit_event(RawEvent::ReceiptClaimed(did, instruction_id, leg_number, receipt_uid, signer));
