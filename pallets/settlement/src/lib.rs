@@ -245,7 +245,7 @@ decl_storage! {
         VenueSigners get(fn venue_signers): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) AccountId => bool;
 
         InstructionDetails get(fn instruction_details): map hasher(twox_64_concat) u64 => Instruction<T::Moment>;
-
+        // TODO: Make this double map
         InstructionLegs get(fn instruction_legs): map hasher(twox_64_concat) u64 => Vec<Leg<T::Balance>>;
 
         InstructionLegStatus get(fn instruction_leg_status): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) u64 => LegStatus;
@@ -356,10 +356,12 @@ decl_module! {
             let sender = ensure_signed(origin)?;
             let sender_key = AccountKey::try_from(sender.encode())?;
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
+            // TODO: check if instruction is still valid and pending
 
             // checks if instruction exists and sender is a counter party with a pending authorization
             ensure!(Self::user_auths(did, instruction_id) == AuthorizationStatus::Pending, Error::<T>::NoPendingAuth);
 
+            // lock tokens
             let legs = Self::instruction_legs(instruction_id);
             for i in 0..legs.len() {
                 if legs[i].from == did {
@@ -371,6 +373,7 @@ decl_module! {
                         legs[i].amount
                     ).is_err() {
                         // Undo custody locks
+                        // TODO: Implement a way to do the checks before committing changes to storage.
                         for j in 0..i {
                             T::Asset::unsafe_decrease_custody_allowance(did,
                                 legs[j].asset,
@@ -404,6 +407,25 @@ decl_module! {
             // checks if instruction exists and sender is a counter party with a pending authorization
             ensure!(Self::user_auths(did, instruction_id) == AuthorizationStatus::Authorized, Error::<T>::InstructionNotAuthorized);
 
+            // unlock tokens
+            let legs = Self::instruction_legs(instruction_id);
+            for i in 0..legs.len() {
+                match Self::instruction_leg_status(instruction_id, u64::try_from(i).unwrap_or_default()) {
+                    LegStatus::ExecutionSkipped(..) => {
+                        // TODO unclaim receipts
+                    },
+                    _ => T::Asset::unsafe_decrease_custody_allowance(
+                        did,
+                        legs[i].asset,
+                        did,
+                        SettlementDID.as_id(),
+                        legs[i].amount
+                    )
+                };
+            }
+
+
+
             // Updates storage
             <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Pending);
             <AuthsReceived>::remove(instruction_id, did);
@@ -420,9 +442,10 @@ decl_module! {
             // checks if instruction exists and sender is a counter party
             let user_auth = Self::user_auths(did, instruction_id);
             ensure!(
-                user_auth == AuthorizationStatus::Authorized || user_auth == AuthorizationStatus::Pending,
+                user_auth == AuthorizationStatus::Authorized,
                 Error::<T>::InstructionNotAuthorized
             );
+            // TODO: check if instruction is still valid and pending
             ensure!(
                 Self::instruction_leg_status(instruction_id, leg_number) == LegStatus::ExecutionPending,
                 Error::<T>::LegNotPending
@@ -436,7 +459,15 @@ decl_module! {
             );
 
             //TODO verify signed data
-            //TODO unlock locked tokens (if any)
+
+            let legs = Self::instruction_legs(instruction_id);
+            T::Asset::unsafe_decrease_custody_allowance(
+                did,
+                legs[usize::try_from(leg_number).unwrap_or_default()].asset,
+                did,
+                SettlementDID.as_id(),
+                legs[usize::try_from(leg_number).unwrap_or_default()].amount
+            );
 
             <ReceiptsUsed>::insert(&signer, receipt_uid, true);
 
@@ -457,8 +488,17 @@ decl_module! {
                 Error::<T>::InstructionNotAuthorized
             );
 
+            // TODO: check if instruction is still valid and pending
+
             if let LegStatus::ExecutionSkipped(signer, receipt_uid) = Self::instruction_leg_status(instruction_id, leg_number) {
-                //TODO unlock locked tokens (if any)
+                let legs = Self::instruction_legs(instruction_id);
+                T::Asset::unsafe_decrease_custody_allowance(
+                    did,
+                    legs[usize::try_from(leg_number).unwrap_or_default()].asset,
+                    did,
+                    SettlementDID.as_id(),
+                    legs[usize::try_from(leg_number).unwrap_or_default()].amount
+                );
                 <ReceiptsUsed>::insert(&signer, receipt_uid, false);
                 <InstructionLegStatus>::insert(instruction_id, leg_number, LegStatus::ExecutionPending);
                 Self::deposit_event(RawEvent::ReceiptClaimed(did, instruction_id, leg_number, receipt_uid, signer));
