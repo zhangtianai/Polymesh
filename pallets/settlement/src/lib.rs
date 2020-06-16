@@ -31,25 +31,17 @@
 use pallet_identity as identity;
 use polymesh_common_utilities::{
     constants::SETTLEMENT_MODULE_ID,
-    traits::{
-        asset::Trait as AssetTrait, balances::Trait as BalancesTrait,
-        identity::Trait as IdentityTrait, CommonTrait,
-    },
-    Context, SystematicIssuers,
+    traits::{asset::Trait as AssetTrait, identity::Trait as IdentityTrait, CommonTrait},
+    Context,
 };
-use polymesh_primitives::{
-    traits::IdentityCurrency, AccountId, AccountKey, Beneficiary, IdentityId, Ticker,
-};
+use polymesh_primitives::{AccountId, AccountKey, IdentityId, Ticker};
 
 use codec::{Decode, Encode};
 use frame_support::{
-    decl_error, decl_event, decl_module, decl_storage,
-    dispatch::DispatchResult,
-    ensure,
-    traits::{Currency, ExistenceRequirement, Imbalance, OnUnbalanced, WithdrawReason},
+    decl_error, decl_event, decl_module, decl_storage, dispatch::DispatchResult, ensure,
 };
-use frame_system::{self as system, ensure_root, ensure_signed};
-use sp_runtime::traits::{AccountIdConversion, Saturating};
+use frame_system::{self as system, ensure_signed};
+use sp_runtime::traits::AccountIdConversion;
 use sp_std::{convert::TryFrom, prelude::*};
 
 type Identity<T> = identity::Module<T>;
