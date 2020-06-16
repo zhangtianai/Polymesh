@@ -31,7 +31,10 @@
 use pallet_identity as identity;
 use polymesh_common_utilities::{
     constants::SETTLEMENT_MODULE_ID,
-    traits::{balances::Trait as BalancesTrait, identity::Trait as IdentityTrait, CommonTrait},
+    traits::{
+        asset::Trait as AssetTrait, balances::Trait as BalancesTrait,
+        identity::Trait as IdentityTrait, CommonTrait,
+    },
     Context, SystematicIssuers,
 };
 use polymesh_primitives::{
@@ -51,9 +54,11 @@ use sp_std::{convert::TryFrom, prelude::*};
 
 type Identity<T> = identity::Module<T>;
 
-pub trait Trait: frame_system::Trait + CommonTrait + BalancesTrait + IdentityTrait {
+pub trait Trait: frame_system::Trait + CommonTrait + IdentityTrait {
     // The overarching event type.
     type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
+    /// Asset module
+    type Asset: AssetTrait<Self::Balance, Self::AccountId>;
 }
 
 #[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -100,12 +105,24 @@ impl Default for AuthorizationStatus {
     }
 }
 
+#[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum SettlementType<T> {
+    SettleOnAuthorization,
+    SettleOnDate(T),
+}
+
+impl<T> Default for SettlementType<T> {
+    fn default() -> Self {
+        Self::SettleOnAuthorization
+    }
+}
+
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Instruction<T> {
     instruction_id: u64,
     venue_id: u64,
     status: InstructionStatus,
-    expiry: Option<T>,
+    settlement_type: SettlementType<T>,
     created_at: Option<T>,
     valid_from: Option<T>,
 }
@@ -195,8 +212,9 @@ decl_error! {
         /// Receipt already used
         ReceiptAlreadyClaimed,
         /// Receipt not used yet
-        ReceiptNotClaimed
-
+        ReceiptNotClaimed,
+        /// Venue does not have required permissions
+        UnauthorizedVenue
     }
 }
 
@@ -253,8 +271,8 @@ decl_module! {
         pub fn add_instruction(
             origin,
             venue_id: u64,
-            valid_from: T::Moment,
-            expiry: Option<T::Moment>,
+            settlement_type: SettlementType<T::Moment>,
+            valid_from: Option<T::Moment>,
             leg_details: Vec<LegDetails<T::Balance>>
         ) -> DispatchResult {
             let sender = ensure_signed(origin)?;
@@ -270,6 +288,7 @@ decl_module! {
             let instruction_counter = Self::instruction_counter();
             let mut legs = Vec::with_capacity(leg_details.len());
             let mut counter_parties = Vec::with_capacity(leg_details.len() * 2);
+            let mut tickers = Vec::with_capacity(leg_details.len());
             for i in 0..leg_details.len() {
                 if let Some(from) = leg_details[i].from {
                     counter_parties.push(from);
@@ -277,8 +296,19 @@ decl_module! {
                 if let Some(to) = leg_details[i].to {
                     counter_parties.push(to);
                 }
+                tickers.push(leg_details[i].asset);
                 legs.push(Leg::new(u64::try_from(i).unwrap_or_default(), leg_details[i].clone()));
             }
+
+            // Check if venue has required permissions from token owners
+            tickers.sort();
+            tickers.dedup();
+            for ticker in &tickers {
+                if Self::venue_filtering(ticker) {
+                    ensure!(Self::venue_allow_list(ticker, venue_id), Error::<T>::UnauthorizedVenue);
+                }
+            }
+
             counter_parties.sort();
             counter_parties.dedup();
             venue.instructions.push(instruction_counter);
@@ -286,18 +316,15 @@ decl_module! {
                 instruction_id: instruction_counter,
                 venue_id: venue_id,
                 status: InstructionStatus::PendingOrExpired,
-                expiry: expiry,
+                settlement_type: settlement_type,
                 created_at: Some(<pallet_timestamp::Module<T>>::get()),
-                valid_from: Some(valid_from)
+                valid_from: valid_from
             };
 
             // write data to storage
             for counter_party in &counter_parties {
                 <UserAuths>::insert(counter_party, instruction_counter, AuthorizationStatus::Pending);
             }
-            // TODO:
-            // Collect, sort and dedup assets just like counter parties above and then
-            // loop over them to check if the venue is authorized by the asset owner
 
             <InstructionLegs<T>>::insert(instruction_counter, legs);
             <InstructionDetails<T>>::insert(instruction_counter, instruction);
@@ -395,7 +422,36 @@ decl_module! {
             }
         }
 
+        pub fn set_venue_filtering(origin, ticker: Ticker, enabled: bool) -> DispatchResult {
+            let sender = ensure_signed(origin)?;
+            let sender_key = AccountKey::try_from(sender.encode())?;
+            let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
+            ensure!(Self::is_owner(&ticker, did), Error::<T>::Unauthorized);
+            <VenueFiltering>::insert(ticker, enabled);
+            Ok(())
+        }
 
+        pub fn allow_venues(origin, ticker: Ticker, venues: Vec<u64>) -> DispatchResult {
+            let sender = ensure_signed(origin)?;
+            let sender_key = AccountKey::try_from(sender.encode())?;
+            let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
+            ensure!(Self::is_owner(&ticker, did), Error::<T>::Unauthorized);
+            for venue in venues {
+                <VenueAllowList>::insert(&ticker, venue, true);
+            }
+            Ok(())
+        }
+
+        pub fn disallow_venues(origin, ticker: Ticker, venues: Vec<u64>) -> DispatchResult {
+            let sender = ensure_signed(origin)?;
+            let sender_key = AccountKey::try_from(sender.encode())?;
+            let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
+            ensure!(Self::is_owner(&ticker, did), Error::<T>::Unauthorized);
+            for venue in venues {
+                <VenueAllowList>::insert(&ticker, venue, false);
+            }
+            Ok(())
+        }
     }
 }
 
@@ -406,5 +462,10 @@ impl<T: Trait> Module<T> {
     /// value and only call this once.
     pub fn account_id() -> T::AccountId {
         SETTLEMENT_MODULE_ID.into_account()
+    }
+
+    /// Returns true if `sender_did` is the owner of `ticker` asset.
+    fn is_owner(ticker: &Ticker, sender_did: IdentityId) -> bool {
+        T::Asset::is_owner(ticker, sender_did)
     }
 }

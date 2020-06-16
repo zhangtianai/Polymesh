@@ -407,6 +407,7 @@ impl treasury::Trait for Runtime {
 
 impl settlement::Trait for Runtime {
     type Event = Event;
+    type Asset = Asset;
 }
 
 impl pallet_offences::Trait for Runtime {
