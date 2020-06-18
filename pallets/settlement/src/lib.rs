@@ -77,8 +77,10 @@ pub enum LegStatus {
     ExecutionPending,
     ExecutionSuccessful,
     ExecutionFailed,
-    /// receipt used, (receipt signer, receipt uid)
+    /// receipt used but not executed yet, (receipt signer, receipt uid)
     ExecutionSkipped(AccountId, u64),
+    /// receipt used, (receipt signer, receipt uid)
+    ExecutionToBeSkipped(AccountId, u64),
 }
 
 impl Default for LegStatus {
@@ -131,9 +133,9 @@ pub struct LegDetails<T> {
     amount: T,
 }
 
-#[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
+#[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Leg<T> {
-    leg_id: u64,
+    leg_number: u64,
     from: IdentityId,
     to: IdentityId,
     asset: Ticker,
@@ -141,9 +143,9 @@ pub struct Leg<T> {
 }
 
 impl<T> Leg<T> {
-    pub fn new(leg_id: u64, leg: LegDetails<T>) -> Self {
+    pub fn new(leg_number: u64, leg: LegDetails<T>) -> Self {
         Leg {
-            leg_id,
+            leg_number,
             from: leg.from,
             to: leg.to,
             asset: leg.asset,
@@ -188,14 +190,14 @@ decl_event!(
         /// A new venue has been created (did, venue_id)
         VenueCreated(IdentityId, u64),
         /// A new instruction has been created
-        /// (did, venue_id, instruction_id, settlement_type, valid_from, leg_details)
+        /// (did, venue_id, instruction_id, settlement_type, valid_from, legs)
         InstructionCreated(
             IdentityId,
             u64,
             u64,
             SettlementType<Moment>,
             Option<Moment>,
-            Vec<LegDetails<Balance>>,
+            Vec<Leg<Balance>>,
         ),
         /// An instruction has been authorized (did, instruction_id)
         InstructionAuthorized(IdentityId, u64),
@@ -245,8 +247,8 @@ decl_storage! {
         VenueSigners get(fn venue_signers): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) AccountId => bool;
 
         InstructionDetails get(fn instruction_details): map hasher(twox_64_concat) u64 => Instruction<T::Moment>;
-        // TODO: Make this double map
-        InstructionLegs get(fn instruction_legs): map hasher(twox_64_concat) u64 => Vec<Leg<T::Balance>>;
+
+        InstructionLegs get(fn instruction_legs): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) u64 => Leg<T::Balance>;
 
         InstructionLegStatus get(fn instruction_leg_status): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) u64 => LegStatus;
 
@@ -343,12 +345,15 @@ decl_module! {
                 <UserAuths>::insert(counter_party, instruction_counter, AuthorizationStatus::Pending);
             }
 
-            <InstructionLegs<T>>::insert(instruction_counter, legs);
+            for i in 0..legs.len() {
+                <InstructionLegs<T>>::insert(instruction_counter, legs[i].leg_number, legs[i].clone());
+            }
+
             <InstructionDetails<T>>::insert(instruction_counter, instruction);
             <InstructionAuthsPending>::insert(instruction_counter, u64::try_from(counter_parties.len()).unwrap_or_default());
             <VenueInfo>::insert(venue_id, venue);
             <InstructionCounter>::put(instruction_counter + 1);
-            Self::deposit_event(RawEvent::InstructionCreated(did, venue_id, instruction_counter, settlement_type, valid_from, leg_details));
+            Self::deposit_event(RawEvent::InstructionCreated(did, venue_id, instruction_counter, settlement_type, valid_from, legs));
             Ok(())
         }
 
@@ -356,15 +361,15 @@ decl_module! {
             let sender = ensure_signed(origin)?;
             let sender_key = AccountKey::try_from(sender.encode())?;
             let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
-            // TODO: check if instruction is still valid and pending
 
-            // checks if instruction exists and sender is a counter party with a pending authorization
+            // checks if the sender is a counter party with a pending authorization
             ensure!(Self::user_auths(did, instruction_id) == AuthorizationStatus::Pending, Error::<T>::NoPendingAuth);
 
             // lock tokens
-            let legs = Self::instruction_legs(instruction_id);
+            let legs = <InstructionLegs<T>>::iter_prefix(instruction_id).collect::<Vec<_>>();
             for i in 0..legs.len() {
                 if legs[i].from == did {
+                    // TODO: Implement a way to do the checks before committing changes to storage.
                     if T::Asset::unsafe_increase_custody_allowance(
                         did,
                         legs[i].asset,
@@ -373,7 +378,6 @@ decl_module! {
                         legs[i].amount
                     ).is_err() {
                         // Undo custody locks
-                        // TODO: Implement a way to do the checks before committing changes to storage.
                         for j in 0..i {
                             T::Asset::unsafe_decrease_custody_allowance(did,
                                 legs[j].asset,
@@ -408,23 +412,24 @@ decl_module! {
             ensure!(Self::user_auths(did, instruction_id) == AuthorizationStatus::Authorized, Error::<T>::InstructionNotAuthorized);
 
             // unlock tokens
-            let legs = Self::instruction_legs(instruction_id);
+            let legs = <InstructionLegs<T>>::iter_prefix(instruction_id).collect::<Vec<_>>();
             for i in 0..legs.len() {
-                match Self::instruction_leg_status(instruction_id, u64::try_from(i).unwrap_or_default()) {
-                    LegStatus::ExecutionSkipped(..) => {
-                        // TODO unclaim receipts
+                match Self::instruction_leg_status(instruction_id, legs[i].leg_number) {
+                    LegStatus::ExecutionToBeSkipped(signer, receipt_uid) => {
+                        <ReceiptsUsed>::insert(&signer, receipt_uid, false);
+                        <InstructionLegStatus>::insert(instruction_id, legs[i].leg_number, LegStatus::ExecutionPending);
+                        Self::deposit_event(RawEvent::ReceiptUnclaimed(did, instruction_id, legs[i].leg_number, receipt_uid, signer));
                     },
-                    _ => T::Asset::unsafe_decrease_custody_allowance(
+                    LegStatus::ExecutionPending | LegStatus::ExecutionFailed => T::Asset::unsafe_decrease_custody_allowance(
                         did,
                         legs[i].asset,
                         did,
                         SettlementDID.as_id(),
                         legs[i].amount
-                    )
+                    ),
+                    LegStatus::ExecutionSuccessful | LegStatus::ExecutionSkipped(..) => return Err(Error::<T>::LegNotPending.into())
                 };
             }
-
-
 
             // Updates storage
             <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Pending);
@@ -445,7 +450,6 @@ decl_module! {
                 user_auth == AuthorizationStatus::Authorized,
                 Error::<T>::InstructionNotAuthorized
             );
-            // TODO: check if instruction is still valid and pending
             ensure!(
                 Self::instruction_leg_status(instruction_id, leg_number) == LegStatus::ExecutionPending,
                 Error::<T>::LegNotPending
@@ -460,18 +464,18 @@ decl_module! {
 
             //TODO verify signed data
 
-            let legs = Self::instruction_legs(instruction_id);
+            let leg = Self::instruction_legs(instruction_id, leg_number);
             T::Asset::unsafe_decrease_custody_allowance(
                 did,
-                legs[usize::try_from(leg_number).unwrap_or_default()].asset,
+                leg.asset,
                 did,
                 SettlementDID.as_id(),
-                legs[usize::try_from(leg_number).unwrap_or_default()].amount
+                leg.amount
             );
 
             <ReceiptsUsed>::insert(&signer, receipt_uid, true);
 
-            <InstructionLegStatus>::insert(instruction_id, leg_number, LegStatus::ExecutionSkipped(signer.clone(), receipt_uid));
+            <InstructionLegStatus>::insert(instruction_id, leg_number, LegStatus::ExecutionToBeSkipped(signer.clone(), receipt_uid));
             Self::deposit_event(RawEvent::ReceiptClaimed(did, instruction_id, leg_number, receipt_uid, signer));
             Ok(())
         }
@@ -484,24 +488,22 @@ decl_module! {
             // checks if instruction exists and sender is a counter party
             let user_auth = Self::user_auths(did, instruction_id);
             ensure!(
-                user_auth == AuthorizationStatus::Authorized || user_auth == AuthorizationStatus::Pending,
+                user_auth == AuthorizationStatus::Authorized,
                 Error::<T>::InstructionNotAuthorized
             );
 
-            // TODO: check if instruction is still valid and pending
-
-            if let LegStatus::ExecutionSkipped(signer, receipt_uid) = Self::instruction_leg_status(instruction_id, leg_number) {
-                let legs = Self::instruction_legs(instruction_id);
+            if let LegStatus::ExecutionToBeSkipped(signer, receipt_uid) = Self::instruction_leg_status(instruction_id, leg_number) {
+                let leg = Self::instruction_legs(instruction_id, leg_number);
                 T::Asset::unsafe_decrease_custody_allowance(
                     did,
-                    legs[usize::try_from(leg_number).unwrap_or_default()].asset,
+                    leg.asset,
                     did,
                     SettlementDID.as_id(),
-                    legs[usize::try_from(leg_number).unwrap_or_default()].amount
+                    leg.amount
                 );
                 <ReceiptsUsed>::insert(&signer, receipt_uid, false);
                 <InstructionLegStatus>::insert(instruction_id, leg_number, LegStatus::ExecutionPending);
-                Self::deposit_event(RawEvent::ReceiptClaimed(did, instruction_id, leg_number, receipt_uid, signer));
+                Self::deposit_event(RawEvent::ReceiptUnclaimed(did, instruction_id, leg_number, receipt_uid, signer));
                 Ok(())
             } else {
                 Err(Error::<T>::ReceiptNotClaimed.into())
