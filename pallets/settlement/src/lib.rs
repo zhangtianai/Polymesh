@@ -57,13 +57,17 @@ pub trait Trait:
 }
 
 // TODO: add comments and tests
+/// Status of an instruction
 #[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InstructionStatus {
+    /// Invalid instruction or details pruned
     Unknown,
+    /// Instruction is pending execution (it might have expired)
     PendingOrExpired,
+    /// Instruction executed successfully
     Executed,
+    /// Instruction execution failed
     Failed,
-    Rejected,
 }
 
 impl Default for InstructionStatus {
@@ -72,10 +76,14 @@ impl Default for InstructionStatus {
     }
 }
 
+/// Status of a leg
 #[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum LegStatus {
+    /// It is waiting execution
     ExecutionPending,
+    /// It was executed successfully
     ExecutionSuccessful,
+    /// Execution was attempted but failed
     ExecutionFailed,
     /// receipt used but not executed yet, (receipt signer, receipt uid)
     ExecutionSkipped(AccountId, u64),
@@ -89,11 +97,16 @@ impl Default for LegStatus {
     }
 }
 
+/// Status of a authorization
 #[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AuthorizationStatus {
+    /// Invalid authorization
     Unknown,
+    /// Pending user's consent
     Pending,
+    /// Authorized by the user
     Authorized,
+    /// Rejected by the user
     Rejected,
 }
 
@@ -103,9 +116,12 @@ impl Default for AuthorizationStatus {
     }
 }
 
+/// Type of settlement
 #[derive(Encode, Decode, Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum SettlementType<T> {
+    /// Instruction should be settled as soon as all authorizations are received
     SettleOnAuthorization,
+    /// Instruction should be settled on a particular date
     SettleOnDate(T),
 }
 
@@ -115,30 +131,48 @@ impl<T> Default for SettlementType<T> {
     }
 }
 
+/// Details about an instruction
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Instruction<T> {
+    /// Unique instruction id. It is an auto incrementing number
     instruction_id: u64,
+    /// Id of the venue this instruction belongs to
     venue_id: u64,
+    /// Status of the instruction
     status: InstructionStatus,
+    /// Type of settlement used for this instruction
     settlement_type: SettlementType<T>,
+    /// Date at which this instruction was created
     created_at: Option<T>,
+    /// Date from which this instruction is valid
     valid_from: Option<T>,
 }
 
+/// Details of a leg that the user needs to submit while creating an instruction
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct LegDetails<T> {
+    /// Identity of the sender
     from: IdentityId,
+    /// Identity of the receiver
     to: IdentityId,
+    /// Ticker of the asset being transferred
     asset: Ticker,
+    /// Amount being transferred
     amount: T,
 }
 
+/// Details of a leg including the leg number in the instruction
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Leg<T> {
+    /// leg number in the instruction
     leg_number: u64,
+    /// Identity of the sender
     from: IdentityId,
+    /// Identity of the receiver
     to: IdentityId,
+    /// Ticker of the asset being transferred
     asset: Ticker,
+    /// Amount being transferred
     amount: T,
 }
 
@@ -154,11 +188,14 @@ impl<T> Leg<T> {
     }
 }
 
+/// Details about a venue
 #[derive(Encode, Decode, Clone, Default, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Venue {
+    /// Identity of the venue's creator
     creator: IdentityId,
-    // instruction_id
+    /// instructions under this venue (Only needed for the UI)
     instructions: Vec<u64>,
+    /// Additional details about this venue
     details: Vec<u8>,
 }
 
@@ -172,13 +209,19 @@ impl Venue {
     }
 }
 
+/// Details about an offchain transaction receipt
 #[derive(Encode, Decode, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
 pub struct Receipt<T> {
-    receipt_uid: u64, //anything unique per signer
+    /// Unique receipt number set by the signer for their receipts
+    receipt_uid: u64,
+    /// Identity of the sender
     from: IdentityId,
+    /// Identity of the receiver
     to: IdentityId,
-    amount: T,
+    /// Ticker of the asset being transferred
     asset: Ticker,
+    /// Amount being transferred
+    amount: T,
 }
 
 decl_event!(
@@ -242,30 +285,33 @@ decl_error! {
 
 decl_storage! {
     trait Store for Module<T: Trait> as StoCapped {
+        /// Info about a venue. venue_id -> venue_details
         VenueInfo get(fn venue_info): map hasher(twox_64_concat) u64 => Venue;
-
+        /// Signers authorized by the venue. (venue_id, signer) -> authorized_bool
         VenueSigners get(fn venue_signers): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) AccountId => bool;
-
+        /// Details about an instruction. instruction_id -> instruction_details
         InstructionDetails get(fn instruction_details): map hasher(twox_64_concat) u64 => Instruction<T::Moment>;
-
+        /// Legs under an instruction. (instruction_id, leg_number) -> Leg
         InstructionLegs get(fn instruction_legs): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) u64 => Leg<T::Balance>;
-
+        /// Status of a leg under an instruction. (instruction_id, leg_number) -> LegStatus
         InstructionLegStatus get(fn instruction_leg_status): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) u64 => LegStatus;
-
+        /// Number of authorizations pending before instruction is executed. instruction_id -> auths_pending
+        /// TODO: use settlement type enum to store this.
         InstructionAuthsPending get(fn instruction_auths_pending): map hasher(twox_64_concat) u64 => u64;
-
+        /// Tracks authorizations received for an instruction. (instruction_id, counter_party) -> AuthorizationStatus
         AuthsReceived get(fn auths_received): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) IdentityId => AuthorizationStatus;
-
+        /// Helps a user track their pending instructions and authorizations (only needed for UI). (counter_party, instruction_id) -> AuthorizationStatus
         UserAuths get(fn user_auths): double_map hasher(twox_64_concat) IdentityId, hasher(twox_64_concat) u64 => AuthorizationStatus;
-
+        /// Tracks redemption of receipts. (signer, receipt_uid) -> receipt_used
         ReceiptsUsed get(fn receipts_used): double_map hasher(twox_64_concat) AccountId, hasher(blake2_128_concat) u64 => bool;
-
+        /// Tracks if a token has enabled filtering venues that can create instructions involving their token. Ticker -> filtering_enabled
         VenueFiltering get(fn venue_filtering): map hasher(blake2_128_concat) Ticker => bool;
-
+        /// Venues that are allowed to create instructions involving a particular ticker. Oly used if filtering is enabled.
+        /// (ticker, venue_id) -> allowed
         VenueAllowList get(fn venue_allow_list): double_map hasher(blake2_128_concat) Ticker, hasher(twox_64_concat) u64 => bool;
-
+        /// Number of venues in the system
         VenueCounter get(fn venue_counter) build(|_| 1u64): u64;
-
+        /// Number of instructions in the system
         InstructionCounter get(fn instruction_counter) build(|_| 1u64): u64;
     }
 }
