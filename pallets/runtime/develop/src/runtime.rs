@@ -406,9 +406,14 @@ impl treasury::Trait for Runtime {
     type Currency = Balances;
 }
 
+parameter_types! {
+    pub const MaxScheduledInstructionLegsPerBlock: u32 = 500;
+}
+
 impl settlement::Trait for Runtime {
     type Event = Event;
     type Asset = Asset;
+    type MaxScheduledInstructionLegsPerBlock = MaxScheduledInstructionLegsPerBlock;
 }
 
 impl pallet_offences::Trait for Runtime {

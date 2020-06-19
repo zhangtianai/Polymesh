@@ -40,6 +40,7 @@ use polymesh_primitives::{AccountId, AccountKey, IdentityId, Ticker};
 use codec::{Decode, Encode};
 use frame_support::{
     decl_error, decl_event, decl_module, decl_storage, dispatch::DispatchResult, ensure,
+    traits::Get,
 };
 use frame_system::{self as system, ensure_signed};
 use sp_runtime::traits::AccountIdConversion;
@@ -54,9 +55,12 @@ pub trait Trait:
     type Event: From<Event<Self>> + Into<<Self as frame_system::Trait>::Event>;
     /// Asset module
     type Asset: AssetTrait<Self::Balance, Self::AccountId>;
+    /// The maximum number of total legs in scheduled instructions that can be executed in a single block.
+    /// Any excess instructions are scheduled in later blocks.
+    type MaxScheduledInstructionLegsPerBlock: Get<u32>;
 }
 
-// TODO: add comments and tests
+// TODO: add tests
 /// Status of an instruction
 #[derive(Encode, Decode, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum InstructionStatus {
@@ -121,8 +125,8 @@ impl Default for AuthorizationStatus {
 pub enum SettlementType<T> {
     /// Instruction should be settled as soon as all authorizations are received
     SettleOnAuthorization,
-    /// Instruction should be settled on a particular date
-    SettleOnDate(T),
+    /// Instruction should be settled on a particular block
+    SettleOnBlock(T),
 }
 
 impl<T> Default for SettlementType<T> {
@@ -133,7 +137,7 @@ impl<T> Default for SettlementType<T> {
 
 /// Details about an instruction
 #[derive(Encode, Decode, Default, Clone, PartialEq, Eq, Debug, PartialOrd, Ord)]
-pub struct Instruction<T> {
+pub struct Instruction<T, U> {
     /// Unique instruction id. It is an auto incrementing number
     instruction_id: u64,
     /// Id of the venue this instruction belongs to
@@ -141,7 +145,7 @@ pub struct Instruction<T> {
     /// Status of the instruction
     status: InstructionStatus,
     /// Type of settlement used for this instruction
-    settlement_type: SettlementType<T>,
+    settlement_type: SettlementType<U>,
     /// Date at which this instruction was created
     created_at: Option<T>,
     /// Date from which this instruction is valid
@@ -229,6 +233,7 @@ decl_event!(
     where
         Balance = <T as CommonTrait>::Balance,
         Moment = <T as pallet_timestamp::Trait>::Moment,
+        BlockNumber = <T as frame_system::Trait>::BlockNumber,
     {
         /// A new venue has been created (did, venue_id)
         VenueCreated(IdentityId, u64),
@@ -238,7 +243,7 @@ decl_event!(
             IdentityId,
             u64,
             u64,
-            SettlementType<Moment>,
+            SettlementType<BlockNumber>,
             Option<Moment>,
             Vec<Leg<Balance>>,
         ),
@@ -292,17 +297,17 @@ decl_storage! {
         /// Signers authorized by the venue. (venue_id, signer) -> authorized_bool
         VenueSigners get(fn venue_signers): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) AccountId => bool;
         /// Details about an instruction. instruction_id -> instruction_details
-        InstructionDetails get(fn instruction_details): map hasher(twox_64_concat) u64 => Instruction<T::Moment>;
+        InstructionDetails get(fn instruction_details): map hasher(twox_64_concat) u64 => Instruction<T::Moment, T::BlockNumber>;
         /// Legs under an instruction. (instruction_id, leg_number) -> Leg
         InstructionLegs get(fn instruction_legs): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) u64 => Leg<T::Balance>;
         /// Status of a leg under an instruction. (instruction_id, leg_number) -> LegStatus
         InstructionLegStatus get(fn instruction_leg_status): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) u64 => LegStatus;
         /// Number of authorizations pending before instruction is executed. instruction_id -> auths_pending
-        /// TODO: use settlement type enum to store this.
         InstructionAuthsPending get(fn instruction_auths_pending): map hasher(twox_64_concat) u64 => u64;
         /// Tracks authorizations received for an instruction. (instruction_id, counter_party) -> AuthorizationStatus
         AuthsReceived get(fn auths_received): double_map hasher(twox_64_concat) u64, hasher(twox_64_concat) IdentityId => AuthorizationStatus;
-        /// Helps a user track their pending instructions and authorizations (only needed for UI). (counter_party, instruction_id) -> AuthorizationStatus
+        /// Helps a user track their pending instructions and authorizations (only needed for UI).
+        /// (counter_party, instruction_id) -> AuthorizationStatus
         UserAuths get(fn user_auths): double_map hasher(twox_64_concat) IdentityId, hasher(twox_64_concat) u64 => AuthorizationStatus;
         /// Tracks redemption of receipts. (signer, receipt_uid) -> receipt_used
         ReceiptsUsed get(fn receipts_used): double_map hasher(twox_64_concat) AccountId, hasher(blake2_128_concat) u64 => bool;
@@ -315,6 +320,9 @@ decl_storage! {
         VenueCounter get(fn venue_counter) build(|_| 1u64): u64;
         /// Number of instructions in the system
         InstructionCounter get(fn instruction_counter) build(|_| 1u64): u64;
+        /// The list of scheduled instructions with the block numbers in which those instructions
+        /// become eligible to be executed. BlockNumber -> Vec<instruction_id>
+        ScheduledInstructions get(fn scheduled_instructions): map hasher(twox_64_concat) T::BlockNumber => Vec<u64>;
     }
 }
 
@@ -323,6 +331,8 @@ decl_module! {
         type Error = Error<T>;
 
         fn deposit_event() = default;
+
+        const MaxScheduledInstructionLegsPerBlock: u32 = T::MaxScheduledInstructionLegsPerBlock::get();
 
         pub fn create_venue(origin, details: Vec<u8>, signers: Vec<AccountId>) -> DispatchResult {
             let sender = ensure_signed(origin)?;
@@ -342,7 +352,7 @@ decl_module! {
         pub fn add_instruction(
             origin,
             venue_id: u64,
-            settlement_type: SettlementType<T::Moment>,
+            settlement_type: SettlementType<T::BlockNumber>,
             valid_from: Option<T::Moment>,
             leg_details: Vec<LegDetails<T::Balance>>
         ) -> DispatchResult {
@@ -395,6 +405,10 @@ decl_module! {
 
             for i in 0..legs.len() {
                 <InstructionLegs<T>>::insert(instruction_counter, legs[i].leg_number, legs[i].clone());
+            }
+
+            if let SettlementType::SettleOnBlock(block_number) = settlement_type {
+                <ScheduledInstructions<T>>::mutate(block_number, |instruction_ids| instruction_ids.push(instruction_counter));
             }
 
             <InstructionDetails<T>>::insert(instruction_counter, instruction);
@@ -600,6 +614,14 @@ impl<T: Trait> Module<T> {
     /// Returns true if `sender_did` is the owner of `ticker` asset.
     fn is_owner(ticker: &Ticker, sender_did: IdentityId) -> bool {
         T::Asset::is_owner(ticker, sender_did)
+    }
+
+    /// Settles scheduled instructions
+    fn on_initialize(block_number: T::BlockNumber) {
+        let scheduled_instructions = <ScheduledInstructions<T>>::take(block_number);
+        for instruction_id in scheduled_instructions {
+            // TODO: Settle instructions
+        }
     }
 
     fn unsafe_unauthorize_instruction(did: IdentityId, instruction_id: u64) -> DispatchResult {
