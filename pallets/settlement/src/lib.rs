@@ -246,6 +246,8 @@ decl_event!(
         InstructionAuthorized(IdentityId, u64),
         /// An instruction has been unauthorized (did, instruction_id)
         InstructionUnauthorized(IdentityId, u64),
+        /// An instruction has been rejected (did, instruction_id)
+        InstructionRejected(IdentityId, u64),
         /// A receipt has been claimed (did, instruction_id, leg_number, receipt_uid, signer)
         ReceiptClaimed(IdentityId, u64, u64, u64, AccountId),
         /// A receipt has been unclaimed (did, instruction_id, leg_number, receipt_uid, signer)
@@ -457,31 +459,25 @@ decl_module! {
             // checks if instruction exists and sender is a counter party with a pending authorization
             ensure!(Self::user_auths(did, instruction_id) == AuthorizationStatus::Authorized, Error::<T>::InstructionNotAuthorized);
 
-            // unlock tokens
-            let legs = <InstructionLegs<T>>::iter_prefix(instruction_id).collect::<Vec<_>>();
-            for i in 0..legs.len() {
-                match Self::instruction_leg_status(instruction_id, legs[i].leg_number) {
-                    LegStatus::ExecutionToBeSkipped(signer, receipt_uid) => {
-                        <ReceiptsUsed>::insert(&signer, receipt_uid, false);
-                        <InstructionLegStatus>::insert(instruction_id, legs[i].leg_number, LegStatus::ExecutionPending);
-                        Self::deposit_event(RawEvent::ReceiptUnclaimed(did, instruction_id, legs[i].leg_number, receipt_uid, signer));
-                    },
-                    LegStatus::ExecutionPending | LegStatus::ExecutionFailed => T::Asset::unsafe_decrease_custody_allowance(
-                        did,
-                        legs[i].asset,
-                        did,
-                        SettlementDID.as_id(),
-                        legs[i].amount
-                    ),
-                    LegStatus::ExecutionSuccessful | LegStatus::ExecutionSkipped(..) => return Err(Error::<T>::LegNotPending.into())
-                };
-            }
+            Self::unsafe_unauthorize_instruction(did, instruction_id)
+        }
+
+        pub fn reject_instruction(origin, instruction_id: u64) -> DispatchResult {
+            let sender = ensure_signed(origin)?;
+            let sender_key = AccountKey::try_from(sender.encode())?;
+            let did = Context::current_identity_or::<Identity<T>>(&sender_key)?;
+
+            let user_auth_status = Self::user_auths(did, instruction_id);
+            match user_auth_status {
+                AuthorizationStatus::Authorized => Self::unsafe_unauthorize_instruction(did, instruction_id)?,
+                AuthorizationStatus::Pending => { },
+                _ => return Err(Error::<T>::NoPendingAuth.into())
+            };
 
             // Updates storage
-            <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Pending);
-            <AuthsReceived>::remove(instruction_id, did);
-            <InstructionAuthsPending>::mutate(instruction_id, |auths_pending| *auths_pending - 1);
-            Self::deposit_event(RawEvent::InstructionUnauthorized(did, instruction_id));
+            <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Rejected);
+            <AuthsReceived>::insert(instruction_id, did, AuthorizationStatus::Rejected);
+            Self::deposit_event(RawEvent::InstructionRejected(did, instruction_id));
             Ok(())
         }
 
@@ -604,5 +600,48 @@ impl<T: Trait> Module<T> {
     /// Returns true if `sender_did` is the owner of `ticker` asset.
     fn is_owner(ticker: &Ticker, sender_did: IdentityId) -> bool {
         T::Asset::is_owner(ticker, sender_did)
+    }
+
+    fn unsafe_unauthorize_instruction(did: IdentityId, instruction_id: u64) -> DispatchResult {
+        // unlock tokens
+        let legs = <InstructionLegs<T>>::iter_prefix(instruction_id).collect::<Vec<_>>();
+        for i in 0..legs.len() {
+            match Self::instruction_leg_status(instruction_id, legs[i].leg_number) {
+                LegStatus::ExecutionToBeSkipped(signer, receipt_uid) => {
+                    <ReceiptsUsed>::insert(&signer, receipt_uid, false);
+                    <InstructionLegStatus>::insert(
+                        instruction_id,
+                        legs[i].leg_number,
+                        LegStatus::ExecutionPending,
+                    );
+                    Self::deposit_event(RawEvent::ReceiptUnclaimed(
+                        did,
+                        instruction_id,
+                        legs[i].leg_number,
+                        receipt_uid,
+                        signer,
+                    ));
+                }
+                LegStatus::ExecutionPending | LegStatus::ExecutionFailed => {
+                    T::Asset::unsafe_decrease_custody_allowance(
+                        did,
+                        legs[i].asset,
+                        did,
+                        SettlementDID.as_id(),
+                        legs[i].amount,
+                    )
+                }
+                LegStatus::ExecutionSuccessful | LegStatus::ExecutionSkipped(..) => {
+                    return Err(Error::<T>::LegNotPending.into())
+                }
+            };
+        }
+
+        // Updates storage
+        <UserAuths>::insert(did, instruction_id, AuthorizationStatus::Pending);
+        <AuthsReceived>::remove(instruction_id, did);
+        <InstructionAuthsPending>::mutate(instruction_id, |auths_pending| *auths_pending - 1);
+        Self::deposit_event(RawEvent::InstructionUnauthorized(did, instruction_id));
+        Ok(())
     }
 }
